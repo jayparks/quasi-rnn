@@ -1,18 +1,21 @@
+import torch
 import numpy as np
 
 import gzip
 from util import load_dict
 
 # Extra vocabulary symbols
-_GO = '_GO'
-EOS = '_EOS' # also function as PAD
+_GO = '_GO_'
+EOS = '_EOS'
 UNK = '_UNK'
+PAD = '_PAD'
 
-extra_tokens = [_GO, EOS, UNK]
+extra_tokens = [_GO, EOS, UNK, PAD]
 
 start_token = extra_tokens.index(_GO)	# start_token = 0
 end_token = extra_tokens.index(EOS)	# end_token = 1
-unk_token = extra_tokens.index(UNK)
+unk_token = extra_tokens.index(UNK) # unk_token = 2
+pad_token = extra_tokens.index(PAD) # pad_token = 3
 
 
 def fopen(filename, mode='r'):
@@ -46,7 +49,7 @@ def prepare_batch(seqs_x, maxlen=None):
     # seqs_x: a list of sentences
     lengths_x = [len(s) for s in seqs_x]
 
-    if maxlen is not None:
+    if maxlen:
         new_seqs_x = []
         new_lengths_x = []
         for l_x, s_x in zip(lengths_x, seqs_x):
@@ -61,10 +64,10 @@ def prepare_batch(seqs_x, maxlen=None):
 
     batch_size = len(seqs_x)
     
-    x_lengths = np.array(lengths_x)
+    x_lengths = torch.LongTensor(lengths_x)
     maxlen_x = np.max(x_lengths)
 
-    x = np.ones((batch_size, maxlen_x)).astype('int32') * end_token
+    x = np.ones((batch_size, maxlen_x)).astype('int32') * pad_token
     
     for idx, s_x in enumerate(seqs_x):
         x[idx, :lengths_x[idx]] = s_x
@@ -87,7 +90,7 @@ def prepare_train_batch(seqs_x, seqs_y, maxlen=None):
                 new_seqs_x.append(s_x)
                 new_lengths_x.append(l_x)
                 new_seqs_y.append(s_y)
-                new_lengths_y.append(l_y)
+                new_lengths_y.append(l_y + 1)
         lengths_x = new_lengths_x
         seqs_x = new_seqs_x
         lengths_y = new_lengths_y
@@ -98,16 +101,26 @@ def prepare_train_batch(seqs_x, seqs_y, maxlen=None):
 
     batch_size = len(seqs_x)
     
-    x_lengths = np.array(lengths_x)
-    y_lengths = np.array(lengths_y)
+    x_lengths = torch.LongTensor(lengths_x)
+    y_lengths = torch.LongTensor(lengths_y) + 1
 
-    maxlen_x = np.max(x_lengths)
-    maxlen_y = np.max(y_lengths)
+    maxlen_x = torch.max(x_lengths)
+    maxlen_y = torch.max(y_lengths)
 
-    x = np.ones((batch_size, maxlen_x)).astype('int32') * end_token
-    y = np.ones((batch_size, maxlen_y)).astype('int32') * end_token
+    x = torch.ones(batch_size, maxlen_x) * pad_token
+    # length + 1 for _GO or EOS token
+    y_input = torch.ones(batch_size, maxlen_y) * pad_token
+    y_target = torch.ones(batch_size, maxlen_y) * pad_token
     
     for idx, [s_x, s_y] in enumerate(zip(seqs_x, seqs_y)):
         x[idx, :lengths_x[idx]] = s_x
-        y[idx, :lengths_y[idx]] = s_y
-    return x, x_lengths, y, y_lengths
+        
+        # insert _GO token at the beginning of a sequence
+        y_input[idx, 0] = start_token
+        y_input[idx, 1:1+lengths_y[idx]] = s_y
+
+        # insert EOS token at the end of a sequence
+        y_target[idx, :lengths_y[idx]] = s_y
+        y_target[idx, lengths_y[idx]] = end_token
+
+    return x, x_lengths, y_input, y_target, y_lengths

@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 from torch import optim
-import torch.nn.functional as F
 
 class Encoder(nn.Module):
     def __init__(self, qrnn_layer, n_layers, kernel_size,
@@ -67,6 +66,9 @@ class QRRNModel(nn.Module):
 
         super(QRNNModel, self).__init__()
 
+        self.epoch_step = 0
+        self.train_step = 0
+
         self.encoder = Encoder(qrnn_layer, n_layers, kernel_size,
                                hidden_size, emb_size, src_vocab_size)
         self.decoder = Decoder(qrnn_layer, n_layers, kernel_size,
@@ -80,6 +82,5 @@ class QRRNModel(nn.Module):
         hidden = self.decoder(tgt_input, memory_list)
 
         # reshaping to [Batch_size x Length, Depth]
-        hidden.view(hidden.size(0)*hidden.size(2), hidden.size(1))
-
-        return self.proj_linear(hidden) # [Batch_size x Length, Tgt_vocab_size]
+        # return [Batch_size x Length, Target_vocab_size]
+        return hidden, self.proj_linear(hidden.view(-1, hidden.size(2)))

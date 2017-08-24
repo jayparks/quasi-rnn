@@ -2,8 +2,6 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 from torch import optim
-import torch.nn.functional as F
-
 
 class QRNNLayer(nn.Module):
     def __init__(self, input_size, hidden_size, kernel_size, use_attn):

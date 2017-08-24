@@ -3,17 +3,48 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 
+import os
+import math
 import time
 import argparse
+import data_utils
 import numpy as np
 from layer import QRNNLayer
 from model import QRNNModel
 
+import data_utils
+from data_utils import prepare_batch
+from data_utils import prepare_train_batch
+from data_iterator import BiTextIterator
+
 use_cuda = torch.cuda.is_available()
 
-def main(config):
 
+def create_model(config):
+	print 'Creating new model parameters..'
+	model = QRNNModel(QRNNLayer, config.num_layers, config.kernel_size,
+		              config.hidden_size, config.emb_size, 
+		              config.num_enc_symbols, config.num_dec_symbols)
+
+	# Initialize training state
+	train_state = { 'epoch': 0, 'train_steps': 0, 'state_dict': None }
+
+	model_path = os.path.join(config.model_dir, config.model_name)
+	if os.path.exists(model_path):
+		print 'Reloading model parameters..'
+		checkpoint = torch.load(model_path)
+		model.load_state_dict(checkpoint['state_dict'])
+		
+		train_state['epoch'] = checkpoint['epoch']
+        train_state['train_steps'] = checkpoint['train_steps']
+
+    return model, train_state
+
+
+
+def train(config):
 	# Load parallel data to train
+	# TODO: using PyTorch DataIterator
     print 'Loading training data..'
     train_set = BiTextIterator(source=config.stc_train,
                                target=config.tgt_train,
@@ -40,29 +71,109 @@ def main(config):
     else:
         valid_set = None
 
+    # Create a Quasi-RNN model
+    model, train_state = create_model(config)
 
-    qrnn_model = QRNNModel(QRNNLayer, config.num_layers, config.kernel_size,
-		                   config.hidden_size, config.emb_size, 
-		                   config.num_enc_symbols, config.num_dec_symbols)
-	qrnn_model.cuda()
+    if use_cuda:
+		model.cuda()
 
 	# Loss and Optimizer
-	criterion = nn.CrossEntropyLoss()
-	optimizer = torch.optim.Adam(qrnn_model.parameters(), lr=config.lr)
+	criterion = nn.CrossEntropyLoss(ignore_index=data_utils.pad_token)
+	optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
 
-
-	step_time, loss = 0.0, 0.0
+	loss = 0.0
     words_seen, sents_seen = 0, 0
     start_time = time.time()
 
     # Training loop
     print 'Training..'
     for epoch_idx in xrange(config.max_epochs):
-        if model.global_epoch_step.eval() >= config.max_epochs:
-            print 'Training is already complete.', \
-                  'current epoch:{}, max epoch:{}'.format()
-            break
+        if train_state['epoch'] >= config.max_epochs:
+                print 'Training is already complete.', \
+                      'current epoch:{}, max epoch:{}'.format(train_state['epoch'], config.max_epochs)
+                break
 
+        for source_seq, target_seq in train_set:    
+            # Get a batch from training parallel data
+            enc_input, eng_len, dec_input, dec_target, dec_len = \
+            	prepare_train_batch(source_seq, target_seq, config.max_seq_len)
+            
+            if use_cuda:
+	            enc_input = Variable(enc_input).cuda()
+	            dec_input = Variable(dec_input).cuda()
+	            dec_target = Variable(dec_target).cuda()
+
+            if enc_input is None or dec_input is None or dec_target is None:
+                print 'No samples under max_seq_length ', config.max_seq_len
+                continue
+
+            # Execute a single training step
+            optimizer.zero_grad()
+    		
+    		dec_hidden, dec_logits = model(enc_input, dec_input)
+    		step_loss = criterion(dec_logits, dec_target.view(-1))
+
+        	step_loss.backward()
+        	nn.utils.clip_grad_norm(model.parameters(), config.max_grad_norm)
+        	optimizer.step()
+
+			loss += float(step_loss.data[0]) / config.display_freq
+            words_seen += float(torch.sum(enc_len + dec_len))
+            sents_seen += float(enc_input.size(0))	# batch_size
+
+            if train_state['train_step'] % config.display_freq == 0:
+
+                avg_perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
+                time_elapsed = time.time() - start_time
+                step_time = time_elapsed / config.display_freq
+
+                words_per_sec = words_seen / time_elapsed
+                sents_per_sec = sents_seen / time_elapsed
+
+                print 'Epoch ', train_state['epoch'], 'Step ', train_state['train_step'], \
+                      'Perplexity {0:.2f}'.format(avg_perplexity), 'Step-time ', step_time, \
+                      '{0:.2f} sents/s'.format(sents_per_sec), '{0:.2f} words/s'.format(words_per_sec)
+
+                loss = 0.0
+                words_seen, sents_seen = 0, 0
+                start_time = time.time()
+
+            # Execute a validation step
+            if valid_set and train_state['train_step'] % config.valid_freq == 0:
+                print 'Validation step'
+                
+                valid_steps = 0
+                valid_loss = 0.0
+                valid_sents_seen = 0
+                for source_seq, target_seq in valid_set:
+                    # Get a batch from validation parallel data
+                    enc_input, enc_len, dec_input, dec_target, dec_len = \
+                        prepare_train_batch(source_seq, target_seq)
+
+					dec_hidden, dec_logits = model(enc_input, dec_input)
+					step_loss = criterion(dec_logits, dec_target.view(-1))
+
+					valid_steps += 1                    
+                    valid_loss += float(step_loss.data[0])
+                    valid_sents_seen += enc_input.size(0)
+                    print '  {} samples seen'.format(valid_sents_seen)
+
+                print 'Valid perplexity: {0:.2f}'.format(math.exp(valid_loss / valid_steps))
+
+            # Save the model checkpoint
+            if train_state['train_step'] % config.save_freq == 0:
+                print 'Saving the model..'
+        		
+        		train_state['state_dict'] = model.state_dict()
+        		state = dict(list(train_state.items()))
+                model_path = os.path.join(config.model_dir, config.model_name)
+                torch.save(state, model_path)
+
+            train_state['train_step'] += 1
+
+        # Increase the epoch index of the model
+        train_state['epoch'] += 1
+        print 'Epoch {0:} DONE'.format(train_state['epoch'])
 
 
 if __name__ == "__main__":
@@ -96,10 +207,11 @@ if __name__ == "__main__":
 	parser.add_argument('--save_freq', type=int, default=100)
 	parser.add_argument('--valid_freq', type=int, default=100)
 	parser.add_argument('--model_dir', type=str, default='model/')
+	parser.add_argument('--model_name', type=str, default='model.pkl')
 	parser.add_argument('--shuffle', type=bool, default=True)
 	parser.add_argument('--sort_by_len', type=bool, default=True)
 
 	config = parser.parse_args()
 	print(config)
-	main(config)
+	train(config)
 	print('DONE')
