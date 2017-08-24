@@ -13,9 +13,9 @@ PAD = '_PAD'
 extra_tokens = [_GO, EOS, UNK, PAD]
 
 start_token = extra_tokens.index(_GO)	# start_token = 0
-end_token = extra_tokens.index(EOS)	# end_token = 1
-unk_token = extra_tokens.index(UNK) # unk_token = 2
-pad_token = extra_tokens.index(PAD) # pad_token = 3
+end_token = extra_tokens.index(EOS)	    # end_token = 1
+unk_token = extra_tokens.index(UNK)     # unk_token = 2
+pad_token = extra_tokens.index(PAD)     # pad_token = 3
 
 
 def fopen(filename, mode='r'):
@@ -32,13 +32,13 @@ def load_inverse_dict(dict_path):
     return idict
 
 
-def seq2words(seq, inverse_target_dictionary):
+def seq2words(seq, inv_target_dict):
     words = []
     for w in seq:
         if w == end_token:
             break
-        if w in inverse_target_dictionary:
-            words.append(inverse_target_dictionary[w])
+        if w in inv_target_dict:
+            words.append(inv_target_dict[w])
         else:
             words.append(UNK)
     return ' '.join(words)
@@ -65,9 +65,9 @@ def prepare_batch(seqs_x, maxlen=None):
     batch_size = len(seqs_x)
     
     x_lengths = torch.LongTensor(lengths_x)
-    maxlen_x = np.max(x_lengths)
+    maxlen_x = torch.max(x_lengths)
 
-    x = np.ones((batch_size, maxlen_x)).astype('int32') * pad_token
+    x = torch.ones(batch_size, maxlen_x) * pad_token
     
     for idx, s_x in enumerate(seqs_x):
         x[idx, :lengths_x[idx]] = s_x
