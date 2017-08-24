@@ -66,9 +66,6 @@ class QRRNModel(nn.Module):
 
         super(QRNNModel, self).__init__()
 
-        self.epoch_step = 0
-        self.train_step = 0
-
         self.encoder = Encoder(qrnn_layer, n_layers, kernel_size,
                                hidden_size, emb_size, src_vocab_size)
         self.decoder = Decoder(qrnn_layer, n_layers, kernel_size,
