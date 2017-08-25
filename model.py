@@ -20,11 +20,11 @@ class Encoder(nn.Module):
     def forward(self, enc_input):
 
         memory_list = []
-        output = self.embedding(enc_input)
+        # output: [Batch_size, Depth, Length]
+        output = self.embedding(enc_input).transpose_(1, 2)
 
         for layer in self.layers:
-            # output: [Batch_size, Depth, Length]
-            output = layer(output)
+            output = layer(output)  # output: [Batch_size, Depth, Length]
             memory_list.append(output)
 
         # return a list of memories
@@ -48,7 +48,7 @@ class Decoder(nn.Module):
                 input_size, hidden_size, kernel_size, use_attn=use_attn))
                                           
     def forward(self, dec_input, memory_list):
-        assert len(memory) == len(self.layers)
+        assert len(memory_list) == len(self.layers)
 
         # output: [Batch_size, Depth, Length]
         output = self.embedding(dec_input).transpose_(1, 2)
