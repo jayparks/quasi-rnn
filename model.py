@@ -80,4 +80,4 @@ class QRRNModel(nn.Module):
 
         # reshaping to [Batch_size x Length, Depth]
         # return [Batch_size x Length, Target_vocab_size]
-        return hidden, self.proj_linear(hidden.view(-1, hidden.size(2)))
+        return hidden, self.proj_linear(hidden.view(-1, hidden.size(1)))
