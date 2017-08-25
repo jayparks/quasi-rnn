@@ -23,8 +23,8 @@ use_cuda = torch.cuda.is_available()
 def create_model(config):
     print 'Creating new model parameters..'
     model = QRNNModel(QRNNLayer, config.num_layers, config.kernel_size,
-		                  config.hidden_size, config.emb_size, 
-		                  config.num_enc_symbols, config.num_dec_symbols)
+    	              config.hidden_size, config.emb_size, 
+    	              config.num_enc_symbols, config.num_dec_symbols)
 
     # Initialize a training state
     train_state = { 'epoch': 0, 'train_steps': 0, 'state_dict': None }
@@ -35,12 +35,11 @@ def create_model(config):
         print 'Reloading model parameters..'
         checkpoint = torch.load(model_path)
         model.load_state_dict(checkpoint['state_dict'])
-		
-		    train_state['epoch'] = checkpoint['epoch']
+
+        train_state['epoch'] = checkpoint['epoch']
         train_state['train_steps'] = checkpoint['train_steps']
 
     return model, train_state
-
 
 
 def train(config):
@@ -75,13 +74,13 @@ def train(config):
     model, train_state = create_model(config)
 
     if use_cuda:
-        model.cuda()
+    	model.cuda()
 
-	  # Loss and Optimizer
-	  criterion = nn.CrossEntropyLoss(ignore_index=data_utils.pad_token)
-	  optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
+	# Loss and Optimizer
+	criterion = nn.CrossEntropyLoss(ignore_index=data_utils.pad_token)
+	optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
 
-	  loss = 0.0
+	loss = 0.0
     words_seen, sents_seen = 0, 0
     start_time = time.time()
 
@@ -100,8 +99,8 @@ def train(config):
             
             if use_cuda:
                 enc_input = Variable(enc_input).cuda()
-	              dec_input = Variable(dec_input).cuda()
-	              dec_target = Variable(dec_target).cuda()
+	            dec_input = Variable(dec_input).cuda()
+	            dec_target = Variable(dec_target).cuda()
 
             if enc_input is None or dec_input is None or dec_target is None:
                 print 'No samples under max_seq_length ', config.max_seq_len
@@ -110,14 +109,14 @@ def train(config):
             # Execute a single training step
             optimizer.zero_grad()
     		
-    		    dec_hidden, dec_logits = model(enc_input, dec_input)
-    		    step_loss = criterion(dec_logits, dec_target.view(-1))
+    		dec_hidden, dec_logits = model(enc_input, dec_input)
+    		step_loss = criterion(dec_logits, dec_target.view(-1))
 
-        	  step_loss.backward()
-        	  nn.utils.clip_grad_norm(model.parameters(), config.max_grad_norm)
-        	  optimizer.step()
+        	step_loss.backward()
+        	nn.utils.clip_grad_norm(model.parameters(), config.max_grad_norm)
+        	optimizer.step()
 
-			      loss += float(step_loss.data[0]) / config.display_freq
+			loss += float(step_loss.data[0]) / config.display_freq
             words_seen += float(torch.sum(enc_len + dec_len))
             sents_seen += float(enc_input.size(0))  # batch_size
 
@@ -152,9 +151,9 @@ def train(config):
                         prepare_train_batch(source_seq, target_seq)
 
                     dec_hidden, dec_logits = model(enc_input, dec_input)
-					          step_loss = criterion(dec_logits, dec_target.view(-1))
+                    step_loss = criterion(dec_logits, dec_target.view(-1))
 
-					          valid_steps += 1                    
+                    valid_steps += 1                    
                     valid_loss += float(step_loss.data[0])
                     valid_sents_seen += enc_input.size(0)
                     print '  {} samples seen'.format(valid_sents_seen)
@@ -164,9 +163,9 @@ def train(config):
             # Save the model checkpoint
             if train_state['train_step'] % config.save_freq == 0:
                 print 'Saving the model..'
-        		
-        		    train_state['state_dict'] = model.state_dict()
-        		    state = dict(list(train_state.items()))
+
+                train_state['state_dict'] = model.state_dict()
+                state = dict(list(train_state.items()))
                 model_path = os.path.join(config.model_dir, config.model_name)
                 torch.save(state, model_path)
 
@@ -179,40 +178,40 @@ def train(config):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-	
-	  # Data loading parameters
-	  parser.add_argument('--src_vocab', type=str, default=None)
-	  parser.add_argument('--tgt_vocab', type=str, default=None)
-	  parser.add_argument('--src_train', type=str, default=None)
-	  parser.add_argument('--tgt_train', type=str, default=None)
-	  parser.add_argument('--src_valid', type=str, default=None)
-	  parser.add_argument('--tgt_valid', type=str, default=None)
 
-	  # Network parameters
-	  parser.add_argument('--kernel_size', type=int, default=2)
-	  parser.add_argument('--hidden_size', type=int, default=1024)
-	  parser.add_argument('--num_layers', type=int, default=2)
-	  parser.add_argument('--emb_size', type=int, default=500)
-	  parser.add_argument('--num_enc_symbols', type=int, default=30000)
-	  parser.add_argument('--num_dec_symbols', type=int, default=30000)
-	  parser.add_argument('--dropout_rate', type=float, default=0.3)
+    # Data loading parameters
+    parser.add_argument('--src_vocab', type=str, default=None)
+    parser.add_argument('--tgt_vocab', type=str, default=None)
+    parser.add_argument('--src_train', type=str, default=None)
+    parser.add_argument('--tgt_train', type=str, default=None)
+    parser.add_argument('--src_valid', type=str, default=None)
+    parser.add_argument('--tgt_valid', type=str, default=None)
 
-	  # Training parameters
-	  parser.add_argument('--lr', type=float, default=0.0002)
-	  parser.add_argument('--max_grad_norm', type=float, default=1.0)
-	  parser.add_argument('--batch_size', type=int, default=128)
-	  parser.add_argument('--max_epochs', type=int, default=10)
-	  parser.add_argument('--maxi_batches', type=int, default=20)
-	  parser.add_argument('--max_seq_len', type=int, default=50)
-	  parser.add_argument('--display_freq', type=int, default=100)
-	  parser.add_argument('--save_freq', type=int, default=100)
-	  parser.add_argument('--valid_freq', type=int, default=100)
-	  parser.add_argument('--model_dir', type=str, default='model/')
-	  parser.add_argument('--model_name', type=str, default='model.pkl')
-	  parser.add_argument('--shuffle', type=bool, default=True)
-	  parser.add_argument('--sort_by_len', type=bool, default=True)
+    # Network parameters
+    parser.add_argument('--kernel_size', type=int, default=2)
+    parser.add_argument('--hidden_size', type=int, default=1024)
+    parser.add_argument('--num_layers', type=int, default=2)
+    parser.add_argument('--emb_size', type=int, default=500)
+    parser.add_argument('--num_enc_symbols', type=int, default=30000)
+    parser.add_argument('--num_dec_symbols', type=int, default=30000)
+    parser.add_argument('--dropout_rate', type=float, default=0.3)
 
-	  config = parser.parse_args()
-	  print(config)
-	  train(config)
-	  print('DONE')
+    # Training parameters
+    parser.add_argument('--lr', type=float, default=0.0002)
+    parser.add_argument('--max_grad_norm', type=float, default=1.0)
+    parser.add_argument('--batch_size', type=int, default=128)
+    parser.add_argument('--max_epochs', type=int, default=10)
+    parser.add_argument('--maxi_batches', type=int, default=20)
+    parser.add_argument('--max_seq_len', type=int, default=50)
+    parser.add_argument('--display_freq', type=int, default=100)
+    parser.add_argument('--save_freq', type=int, default=100)
+    parser.add_argument('--valid_freq', type=int, default=100)
+    parser.add_argument('--model_dir', type=str, default='model/')
+    parser.add_argument('--model_name', type=str, default='model.pkl')
+    parser.add_argument('--shuffle', type=bool, default=True)
+    parser.add_argument('--sort_by_len', type=bool, default=True)
+
+    config = parser.parse_args()
+    print(config)
+    train(config)
+    print('DONE')
