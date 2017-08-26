@@ -43,6 +43,16 @@ def load_model(config):
 def decode(config):
 
 
+	zero_pad = torch.zeros(config.batch_size, config.kernel_size-1)
+	start_token = torch.ones(config.batch_size, 1) * data_utils.start_token
+	input = torch.cat(zero_pad, start_token, dim=1)
+
+	for t in xrange(config.max_decode_step):
+		
+
+
+
+
 
 
 

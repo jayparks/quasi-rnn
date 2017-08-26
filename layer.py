@@ -50,17 +50,19 @@ class QRNNLayer(nn.Module):
         # c_, h_: [Batch_size x Depth x 1]
         return c_, h_
 
-    def forward(self, inputs, memory=None):
+    def forward(self, inputs, initial_state=None, memory=None):
         # inputs: [Batch_size x Depth x Length] 
         Z, F, O = self._conv_step(inputs, memory)
         
-        # initialize c to zero
-        c = torch.zeros(inputs.size()[:2]).unsqueeze(-1)	# TODO: check if it's broadcastable
+        # set initial state
+        c = initial_state if initial_state else torch.zeros(inputs.size()[:2]).unsqueeze(-1)
         attn_memory = memory if self.use_attn else None	# set whether to use attn
+        cell_states = []
         hidden_states = []
         for z, f, o in zip(Z.split(1, 2), F.split(1, 2), O.split(1, 2)):
-            c, h = self._rnn_step(z, f, o, c, attn_memory):
+            c, h = self._rnn_step(z, f, o, c, attn_memory)
+            cell_states.append(c)
             hidden_states.append(h)
 
-        # return concatenated hidden states: [Batch_size x Depth x Length]
-        return torch.cat(hidden_states, dim=2)
+        # return concatenated cell and hidden states: [Batch_size x Depth x Length]
+        return torch.cat(cell_states, dim=2), torch.cat(hidden_states, dim=2)
