@@ -5,7 +5,6 @@ from torch import optim
 
 class QRNNLayer(nn.Module):
     def __init__(self, input_size, hidden_size, kernel_size, use_attn):
-
         super(QRNNLayer, self).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size

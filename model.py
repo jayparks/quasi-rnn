@@ -6,7 +6,6 @@ from torch import optim
 class Encoder(nn.Module):
     def __init__(self, qrnn_layer, n_layers, kernel_size,
                  hidden_size, emb_size, src_vocab_size):
-
         super(Encoder, self).__init__()
         # Initialize source embedding
         self.embedding = nn.Embedding(src_vocab_size, emb_size)
@@ -18,23 +17,21 @@ class Encoder(nn.Module):
                 input_size, hidden_size, kernel_size, use_attn=False))
                                           
     def forward(self, inputs):
-
-        h_list = []
         # output: [Batch_size, Depth, Length]
         output = self.embedding(inputs).transpose_(1, 2)
 
+        h_list = []
         for layer in self.layers:
             _, output = layer(output)  # output: [Batch_size, Depth, Length]
             h_list.append(output)
 
-        # return a list of hidden states for each layer
+        # return a list of hidden states of each layer
         return h_list
 
 
 class Decoder(nn.Module):
     def __init__(self, qrnn_layer, n_layers, kernel_size,
                  hidden_size, emb_size, tgt_vocab_size):
-
         super(Decoder, self).__init__()
         # Initialize target embedding
         self.embedding = nn.Embedding(tgt_vocab_size, emb_size)
@@ -68,7 +65,6 @@ class Decoder(nn.Module):
 class QRRNModel(nn.Module):
     def __init__(self, qrnn_layer, n_layers, kernel_size, 
                  hidden_size, emb_size, src_vocab_size, tgt_vocab_size):
-
         super(QRNNModel, self).__init__()
 
         self.encoder = Encoder(qrnn_layer, n_layers, kernel_size,
@@ -78,16 +74,15 @@ class QRRNModel(nn.Module):
         self.proj_linear = nn.Linear(hidden_size, tgt_vocab_size)
 
     def encode(self, inputs):
-        
         return self.encoder(inputs)
 
 
     def decode(self, inputs, init_states=None, memory_list=None):
-
         return self.decoder(inputs, init_states, memory_list)
 
 
     def forward(self, enc_inputs, dec_init, dec_inputs):
+        # Encode source inputs
         memory_list = self.encode(enc_inputs)
 
         # The shape of the each state: [Batch_size, Depth, Length]
