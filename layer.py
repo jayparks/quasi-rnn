@@ -45,24 +45,21 @@ class QRNNLayer(nn.Module):
         context = torch.sum(alpha.unsqueeze(1) * attn_memory, dim=2)		# context: [Batch_size x Depth]
         h_ = self.rnn_linear(torch.cat([c_, context], dim=1)).unsqueeze(-1)
         h_ = torch.mul(o, h_)
-        #h_ = torch.mul(o, self.rnn_linear(torch.cat(c_.squeeze(-1), context)).unsqueeze(-1))
             
         # c_, h_: [Batch_size x Depth x 1]
         return c_, h_
 
-    def forward(self, inputs, initial_state=None, memory=None):
+    def forward(self, inputs, cell_state=None, memory=None):
         # inputs: [Batch_size x Depth x Length] 
         Z, F, O = self._conv_step(inputs, memory)
         
         # set initial state
-        c = initial_state if initial_state else torch.zeros(inputs.size()[:2]).unsqueeze(-1)
+        c = cell_state if cell_state else torch.zeros(inputs.size()[:2]).unsqueeze(-1)
         attn_memory = memory if self.use_attn else None	# set whether to use attn
-        cell_states = []
-        hidden_states = []
+        c_list, h_list = [], []
         for z, f, o in zip(Z.split(1, 2), F.split(1, 2), O.split(1, 2)):
             c, h = self._rnn_step(z, f, o, c, attn_memory)
-            cell_states.append(c)
-            hidden_states.append(h)
+            c_list.append(c); h_list.append(h)
 
         # return concatenated cell and hidden states: [Batch_size x Depth x Length]
-        return torch.cat(cell_states, dim=2), torch.cat(hidden_states, dim=2)
+        return torch.cat(c_list, dim=2), torch.cat(h_list, dim=2)

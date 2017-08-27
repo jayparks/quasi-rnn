@@ -109,7 +109,7 @@ def train(config):
             # Execute a single training step
             optimizer.zero_grad()
     		
-    		dec_hidden, dec_logits = model(enc_input, dec_input)
+    		_, dec_logits = model(enc_input, dec_input)
     		step_loss = criterion(dec_logits, dec_target.view(-1))
 
         	step_loss.backward()

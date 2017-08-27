@@ -17,18 +17,18 @@ class Encoder(nn.Module):
             self.layers.append(qrnn_layer(
                 input_size, hidden_size, kernel_size, use_attn=False))
                                           
-    def forward(self, enc_input):
+    def forward(self, inputs):
 
-        memory_list = []
+        h_list = []
         # output: [Batch_size, Depth, Length]
-        output = self.embedding(enc_input).transpose_(1, 2)
+        output = self.embedding(inputs).transpose_(1, 2)
 
         for layer in self.layers:
-            output = layer(output)  # output: [Batch_size, Depth, Length]
-            memory_list.append(output)
+            _, output = layer(output)  # output: [Batch_size, Depth, Length]
+            h_list.append(output)
 
-        # return a list of memories
-        return memory_list
+        # return a list of hidden states for each layer
+        return h_list
 
 
 class Decoder(nn.Module):
@@ -47,17 +47,22 @@ class Decoder(nn.Module):
             self.layers.append(qrnn_layer(
                 input_size, hidden_size, kernel_size, use_attn=use_attn))
                                           
-    def forward(self, dec_input, memory_list):
+    def forward(self, inputs, init_states, memory_list):
         assert len(memory_list) == len(self.layers)
 
-        # output: [Batch_size, Depth, Length]
-        output = self.embedding(dec_input).transpose_(1, 2)
-
-        for idx, layer in enumerate(self.layers):
-            output = layer(output, memory_list[idx])
+        c_list, h_list = [], []
 
         # output: [Batch_size, Depth, Length]
-        return output
+        output = self.embedding(inputs).transpose_(1, 2)
+
+        for layer_idx, layer in enumerate(self.layers):
+            state, output = \
+                layer(output, init_states[layer_idx], memory_list[layer_idx])
+            c_list.append(state); h_list.append(output)
+
+        # The shape of the each state: [Batch_size, Depth, Length]
+        # return lists of cell states and hidden_states
+        return c_list, h_list
 
 
 class QRRNModel(nn.Module):
@@ -72,12 +77,29 @@ class QRRNModel(nn.Module):
                                hidden_size, emb_size, tgt_vocab_size)
         self.proj_linear = nn.Linear(hidden_size, tgt_vocab_size)
 
-    def forward(self, src_input, tgt_input):
-        memory_list = self.encoder(src_input)
+    def encode(self, inputs):
+        
+        return self.encoder(inputs)
 
-        # hidden: [Batch_size, Depth, Length]
-        hidden = self.decoder(tgt_input, memory_list)
 
-        # reshaping to [Batch_size x Length, Depth]
-        # return [Batch_size x Length, Target_vocab_size]
-        return hidden, self.proj_linear(hidden.view(-1, hidden.size(1)))
+    def decode(self, inputs, init_states=None, memory_list=None):
+
+        return self.decoder(inputs, init_states, memory_list)
+
+
+    def forward(self, enc_inputs, dec_init, dec_inputs):
+        memory_list = self.encode(enc_inputs)
+
+        # The shape of the each state: [Batch_size, Depth, Length]
+        c_list, h_list = self.decode(dec_inputs, dec_init, memory_list)
+
+        # return:
+        # i) cell_state list
+        #     it will be used as initial states for decoding
+        
+        # ii) projected hidden_state of the last layer
+        #     first reshape it to [Batch_size x Length, Depth]
+        #     after projection: [Batch_size x Length, Target_vocab_size]
+        h_last = h_list[-1]
+
+        return c_list, self.proj_linear(h_last.view(-1, h_last.size(1)))
