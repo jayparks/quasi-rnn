@@ -19,6 +19,7 @@ from data_iterator import BiTextIterator
 
 use_cuda = torch.cuda.is_available()
 
+
 def load_model(config):
     model = QRNNModel(QRNNLayer, config.num_layers, config.kernel_size,
     	              config.hidden_size, config.emb_size, 
@@ -37,7 +38,6 @@ def load_model(config):
     	raise ValueError(
     		'No such file:[{}]'.format(config.model_path))
     return model
-
 
 
 def decode(config):
@@ -75,16 +75,12 @@ def decode(config):
                 fout.write(str(data_utils.seq2words(seq, target_inverse_dict)) + '\n')
 
             print '  {}th line decoded'.format(idx * config.batch_size)
-
         print 'Decoding terminated'
-
 
     except IOError:
         pass
-
     finally:
         fout.close()
-
 
 
 if __name__ == "__main__":
