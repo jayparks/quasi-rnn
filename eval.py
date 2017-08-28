@@ -41,18 +41,49 @@ def load_model(config):
 
 
 def decode(config):
+    # Load source data to decode
+    test_set = TextIterator(source=config['decode_input'],
+                            batch_size=config['batch_size'],
+                            source_dict=config['source_vocabulary'],
+                            maxlen=None,
+                            n_words_source=config['num_encoder_symbols'])    
+
+    # Load inverse dictionary used in decoding
+    target_inverse_dict = data_utils.load_inverse_dict(config['target_vocabulary'])
+
+    model = load_model(config)
+    if use_cuda:
+        model.cuda()
+
+    inputs = torch.ones(config.batch_size, 1) * data_utils.start_token
+    try:
+        fout = [data_utils.fopen(config.decode_output, 'w')]
+
+        for idx, source_seq in enumerate(test_set):
+            source, source_len = prepare_batch(source_seq)
+            memory_list = model.encode(source)
+
+            temp = []
+            for t in xrange(config.max_decode_step):
+                state, logit = model.decode(inputs, state, memory_list)
+                inputs = torch.max(logit, dim=1)
+                temp.append(inputs.unsqueeze(-1))
+
+            # outputs: [batch_size, max_decode_step]
+            outputs = torch.cat(temp, dim=1)
+            for seq in outputs:
+                fout.write(str(data_utils.seq2words(seq, target_inverse_dict)) + '\n')
+
+            print '  {}th line decoded'.format(idx * config.batch_size)
+
+        print 'Decoding terminated'
 
 
-	zero_pad = torch.zeros(config.batch_size, config.kernel_size-1)
-	start_token = torch.ones(config.batch_size, 1) * data_utils.start_token
-	input = torch.cat(zero_pad, start_token, dim=1)
+    except IOError:
+        pass
 
-	for t in xrange(config.max_decode_step):
-		
-
-
-
-
+    finally:
+        fout.close()
 
 
 
