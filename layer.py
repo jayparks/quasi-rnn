@@ -15,13 +15,16 @@ class QRNNLayer(nn.Module):
         self.conv1d = nn.Conv1d(in_channels=input_size, out_channels=3*hidden_size, 
                                 kernel_size=kernel_size)
 
-        
         self.conv_linear = nn.Linear(hidden_size, 3*hidden_size)
         self.rnn_linear = nn.Linear(2*hidden_size, hidden_size)
 
-    def _conv_step(inputs, memory=None)
+    def _conv_step(inputs, memory=None, keep_dim=True)
         # inputs: [Batch_size x Depth x Length]
         # memory: [Batch_size x Depth x Length']
+        if keep_dim:
+            pad = torch.zeros(inputs.size()[:2] + [self.kernel_size-1]) # TODO: fix
+            inputs = torch.cat([pad, inputs], dim=2)
+
         gates = self.conv1d(inputs) # gates: [Batch_size x 3*Depth x Length]
         if memory:
             final_memory = memory.split(split_size=1, dim=2)[-1].squeeze(2)	# final_memory: [Batch_size x Depth]
