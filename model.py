@@ -16,9 +16,9 @@ class Encoder(nn.Module):
             self.layers.append(qrnn_layer(
                 input_size, hidden_size, kernel_size, use_attn=False))
                                           
-    def forward(self, inputs):
+    def forward(self, input, input_len):
         # output: [Batch_size, Depth, Length]
-        output = self.embedding(inputs).transpose_(1, 2)
+        output = self.embedding(input).transpose_(1, 2)
 
         h_list = []
         for layer in self.layers:
@@ -45,7 +45,8 @@ class Decoder(nn.Module):
                 input_size, hidden_size, kernel_size, use_attn=use_attn))
                                           
     def forward(self, inputs, init_states, memory_list):
-        assert len(memory_list) == len(self.layers)
+        assert len(self.layers) == len(init_states)
+        assert len(self.layers) == len(memory_list) 
 
         c_list, h_list = [], []
 
@@ -77,7 +78,7 @@ class QRRNModel(nn.Module):
         return self.encoder(inputs)
 
 
-    def decode(self, inputs, init_states=None, memory_list=None):
+    def decode(self, inputs, init_states, memory_list):
         return self.decoder(inputs, init_states, memory_list)
 
 

@@ -44,7 +44,7 @@ def create_model(config):
 
 def train(config):
     # Load parallel data to train
-	  # TODO: using PyTorch DataIterator
+    # TODO: using PyTorch DataIterator
     print 'Loading training data..'
     train_set = BiTextIterator(source=config.stc_train,
                                target=config.tgt_train,
@@ -76,11 +76,11 @@ def train(config):
     if use_cuda:
     	model.cuda()
 
-	# Loss and Optimizer
-	criterion = nn.CrossEntropyLoss(ignore_index=data_utils.pad_token)
-	optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
+    # Loss and Optimizer
+    criterion = nn.CrossEntropyLoss(ignore_index=data_utils.pad_token)
+    optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
 
-	loss = 0.0
+    loss = 0.0
     words_seen, sents_seen = 0, 0
     start_time = time.time()
 
@@ -94,13 +94,13 @@ def train(config):
 
         for source_seq, target_seq in train_set:    
             # Get a batch from training parallel data
-            enc_input, eng_len, dec_input, dec_target, dec_len = \
+            enc_input, enc_len, dec_input, dec_target, dec_len = \
                 prepare_train_batch(source_seq, target_seq, config.max_seq_len)
             
             if use_cuda:
                 enc_input = Variable(enc_input).cuda()
-	            dec_input = Variable(dec_input).cuda()
-	            dec_target = Variable(dec_target).cuda()
+	        dec_input = Variable(dec_input).cuda()
+	        dec_target = Variable(dec_target).cuda()
 
             if enc_input is None or dec_input is None or dec_target is None:
                 print 'No samples under max_seq_length ', config.max_seq_len
@@ -108,15 +108,15 @@ def train(config):
 
             # Execute a single training step
             optimizer.zero_grad()
-    		
-    		_, dec_logits = model(enc_input, dec_input)
-    		step_loss = criterion(dec_logits, dec_target.view(-1))
 
-        	step_loss.backward()
-        	nn.utils.clip_grad_norm(model.parameters(), config.max_grad_norm)
-        	optimizer.step()
+            _, dec_logits = model(enc_input, dec_input)
+            step_loss = criterion(dec_logits, dec_target.view(-1))
 
-			loss += float(step_loss.data[0]) / config.display_freq
+            step_loss.backward()
+            nn.utils.clip_grad_norm(model.parameters(), config.max_grad_norm)
+            optimizer.step()
+
+            loss += float(step_loss.data[0]) / config.display_freq
             words_seen += float(torch.sum(enc_len + dec_len))
             sents_seen += float(enc_input.size(0))  # batch_size
 
