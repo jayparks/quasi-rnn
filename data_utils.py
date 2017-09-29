@@ -102,7 +102,7 @@ def prepare_train_batch(seqs_x, seqs_y, maxlen=None):
     batch_size = len(seqs_x)
     
     x_lengths = torch.LongTensor(lengths_x)
-    y_lengths = torch.LongTensor(lengths_y) + 1
+    y_lengths = torch.LongTensor(lengths_y)
 
     maxlen_x = torch.max(x_lengths)
     maxlen_y = torch.max(y_lengths)

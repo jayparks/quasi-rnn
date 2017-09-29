@@ -16,13 +16,13 @@ class Encoder(nn.Module):
             self.layers.append(qrnn_layer(
                 input_size, hidden_size, kernel_size, use_attn=False))
                                           
-    def forward(self, input, input_len):
-        # output: [Batch_size, Depth, Length]
-        output = self.embedding(input).transpose_(1, 2)
+    def forward(self, inputs, input_len):
+        # output: [batch_size, emb_size, length]
+        output = self.embedding(inputs).transpose_(1, 2)
 
         h_list = []
         for layer in self.layers:
-            _, output = layer(output)  # output: [Batch_size, Depth, Length]
+            _, output = layer(output, input_len)  # output: [batch_size, hidden_size, length]
             h_list.append(output)
 
         # return a list of hidden states of each layer
@@ -44,21 +44,21 @@ class Decoder(nn.Module):
             self.layers.append(qrnn_layer(
                 input_size, hidden_size, kernel_size, use_attn=use_attn))
                                           
-    def forward(self, inputs, init_states, memory_list):
+    def forward(self, inputs, input_len, init_states, memory_list):
         assert len(self.layers) == len(init_states)
         assert len(self.layers) == len(memory_list) 
 
         c_list, h_list = [], []
 
-        # output: [Batch_size, Depth, Length]
+        # output: [batch_size, emb_size, length]
         output = self.embedding(inputs).transpose_(1, 2)
-
+        
         for layer_idx, layer in enumerate(self.layers):
             state, output = \
-                layer(output, init_states[layer_idx], memory_list[layer_idx])
+                layer(output, input_len, init_states[layer_idx], memory_list[layer_idx])
             c_list.append(state); h_list.append(output)
 
-        # The shape of the each state: [Batch_size, Depth, Length]
+        # The shape of the each state: [batch_size, hidden_size, length]
         # return lists of cell states and hidden_states
         return c_list, h_list
 

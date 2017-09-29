@@ -74,7 +74,7 @@ def train(config):
     model, train_state = create_model(config)
 
     if use_cuda:
-    	model.cuda()
+        model.cuda()
 
     # Loss and Optimizer
     criterion = nn.CrossEntropyLoss(ignore_index=data_utils.pad_token)
@@ -99,8 +99,16 @@ def train(config):
             
             if use_cuda:
                 enc_input = Variable(enc_input).cuda()
-	        dec_input = Variable(dec_input).cuda()
-	        dec_target = Variable(dec_target).cuda()
+                enc_len = Variable(enc_len).cuda()
+                dec_input = Variable(dec_input).cuda()
+                dec_target = Variable(dec_target).cuda()
+                dec_len = Variable(dec_len).cuda()
+            else:
+                enc_input = Variable(enc_input)
+                enc_len = Variable(enc_len)
+                dec_input = Variable(dec_input)
+                dec_target = Variable(dec_target)
+                dec_len = Variable(dec_len)
 
             if enc_input is None or dec_input is None or dec_target is None:
                 print 'No samples under max_seq_length ', config.max_seq_len
