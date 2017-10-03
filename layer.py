@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.autograd import Variable
 from torch import optim
 
@@ -21,8 +22,8 @@ class QRNNLayer(nn.Module):
         # inputs: [batch_size, input_size, length]
         # memory: [batch_size, memory_size, length']
         if keep_dim:
-            pad = torch.zeros(inputs.size()[:2] + [self.kernel_size-1]) # TODO: fix
-            inputs = torch.cat([pad, inputs], dim=2)
+            padded = F.pad(inputs.unsqueeze(2), (self.kernel_size-1, 0, 0, 0))
+            inputs = padded.squeeze(2) 
 
         gates = self.conv1d(inputs) # gates: [batch_size, 3*hidden_size, length]
         if memory:
@@ -63,7 +64,7 @@ class QRNNLayer(nn.Module):
         for time, (z, f, o) in enumerate(zip(Z.split(1, 2), F.split(1, 2), O.split(1, 2))):
             c, h = self._rnn_step(z, f, o, c, attn_memory)
             # mask to support variable seq_lengths
-            mask = Variable((time < input_len).float().unsqueeze(1).expand_as(h)).cuda()
+            mask = Variable((time < input_len).float().unsqueeze(1).expand_as(h))
             c_list.append(c*mask); h_list.append(h*mask)
 
         # return concatenated cell and hidden states: [batch_size, hidden_size, length]
