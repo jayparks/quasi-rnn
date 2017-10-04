@@ -81,7 +81,7 @@ class QRRNModel(nn.Module):
     def decode(self, inputs, init_states, memory_list):
         return self.decoder(inputs, init_states, memory_list)
 
-
+    # TODO: fix
     def forward(self, enc_inputs, dec_init, dec_inputs):
         # Encode source inputs
         memory_list = self.encode(enc_inputs)

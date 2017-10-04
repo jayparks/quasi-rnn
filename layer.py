@@ -22,7 +22,7 @@ class QRNNLayer(nn.Module):
         # inputs: [batch_size, input_size, length]
         # memory: [batch_size, memory_size, length']
         if keep_dim:
-            padded = F.pad(inputs.unsqueeze(2), (self.kernel_size-1, 0, 0, 0))
+            padded = F.pad(inputs.unsqueeze(2), (self.kernel_size-1, 0, 0, 0))  # TODO: fix F.pad(inputs, (, ,))
             inputs = padded.squeeze(2) 
 
         gates = self.conv1d(inputs) # gates: [batch_size, 3*hidden_size, length]
@@ -33,7 +33,7 @@ class QRNNLayer(nn.Module):
  
         # Z, F, O: [batch_size, hidden_size, length]
         Z, F, O = gates.split(split_size=self.hidden_size, dim=1)
-        return Z.tanh_(), F.sigmoid_(), O.sigmoid_()
+        return Z.tanh(), F.sigmoid(), O.sigmoid()
 
     def _rnn_step(z, f, o, c, attn_memory=None):
         # uses 'fo pooling' at each time step
@@ -58,7 +58,7 @@ class QRNNLayer(nn.Module):
         Z, F, O = self._conv_step(inputs, memory)
         
         # set initial state
-        c = init_state if init_state else torch.zeros(Z.size()[:2]).unsqueeze(-1)
+        c = init_state if init_state else Variable(torch.zeros(Z.size()[:2]).unsqueeze(-1))
         attn_memory = memory if self.use_attn else None	# set whether to use attn
         c_list, h_list = [], []
         for time, (z, f, o) in enumerate(zip(Z.split(1, 2), F.split(1, 2), O.split(1, 2))):
