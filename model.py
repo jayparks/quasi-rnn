@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
-from torch import optim
 
 class Encoder(nn.Module):
     def __init__(self, qrnn_layer, n_layers, kernel_size,
@@ -18,15 +17,15 @@ class Encoder(nn.Module):
                                           
     def forward(self, inputs, input_len):
         # output: [batch_size, emb_size, length]
-        output = self.embedding(inputs).transpose_(1, 2)
+        output = self.embedding(inputs).transpose(1, 2)
 
-        h_list = []
+        c_layer, h_layer = [], []
         for layer in self.layers:
-            _, output = layer(output, input_len)  # output: [batch_size, hidden_size, length]
-            h_list.append(output)
+            state, output = layer(output, input_len)  # output: [batch_size, hidden_size, length]
+            h_layer.append(output)
 
         # return a list of hidden states of each layer
-        return h_list
+        return c_layer, h_layer
 
 
 class Decoder(nn.Module):
@@ -44,18 +43,18 @@ class Decoder(nn.Module):
             self.layers.append(qrnn_layer(
                 input_size, hidden_size, kernel_size, use_attn=use_attn))
                                           
-    def forward(self, inputs, input_len, init_states, memory_list):
+    def forward(self, inputs, input_len, states, memory_list):
         assert len(self.layers) == len(init_states)
         assert len(self.layers) == len(memory_list) 
 
-        c_list, h_list = [], []
+        c_layer, h_layer = [], []
 
         # output: [batch_size, emb_size, length]
-        output = self.embedding(inputs).transpose_(1, 2)
+        output = self.embedding(inputs).transpose(1, 2)
         
         for layer_idx, layer in enumerate(self.layers):
             state, output = \
-                layer(output, input_len, init_states[layer_idx], memory_list[layer_idx])
+                layer(output, input_len, states[layer_idx], memory_list[layer_idx])
             c_list.append(state); h_list.append(output)
 
         # The shape of the each state: [batch_size, hidden_size, length]
@@ -74,15 +73,14 @@ class QRRNModel(nn.Module):
                                hidden_size, emb_size, tgt_vocab_size)
         self.proj_linear = nn.Linear(hidden_size, tgt_vocab_size)
 
-    def encode(self, inputs):
-        return self.encoder(inputs)
+    def encode(self, inputs, input_len):
+        return self.encoder(inputs, input_len)
 
-
-    def decode(self, inputs, init_states, memory_list):
-        return self.decoder(inputs, init_states, memory_list)
+    def decode(self, inputs, input_len, init_states, memory_list):
+        return self.decoder(inputs, input_len, init_states, memory_list)
 
     # TODO: fix
-    def forward(self, enc_inputs, dec_init, dec_inputs):
+    def forward(self, enc_inputs, enc_len, dec_init, dec_inputs):
         # Encode source inputs
         memory_list = self.encode(enc_inputs)
 

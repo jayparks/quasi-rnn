@@ -18,18 +18,19 @@ class QRNNLayer(nn.Module):
         self.conv_linear = nn.Linear(hidden_size, 3*hidden_size)
         self.rnn_linear = nn.Linear(2*hidden_size, hidden_size)
 
-    def _conv_step(inputs, keep_dim=True, memory=None)
+        self.context = None
+        self.hidden = None
+
+    def _conv_step(inputs, memory=None)
         # inputs: [batch_size, input_size, length]
-        # memory: [batch_size, memory_size, length']
-        if keep_dim:
-            padded = F.pad(inputs.unsqueeze(2), (self.kernel_size-1, 0, 0, 0))  # TODO: fix F.pad(inputs, (, ,))
-            inputs = padded.squeeze(2) 
+        # memory: [batch_size, memory_size]
+        padded = F.pad(inputs.unsqueeze(2), (self.kernel_size-1, 0, 0, 0)) # TODO: fix F.pad(inputs, (self.kernel_size-1, 0,))
+        inputs = padded.squeeze(2) 
 
         gates = self.conv1d(inputs) # gates: [batch_size, 3*hidden_size, length]
         if memory:
-            last_memory = memory.split(split_size=1, dim=2)[-1].squeeze(2)	# last_memory: [batch_size, memory_size]
             gates = gates + \
-                    self.conv_linear(last_memory).unsqueeze(-1)			# broadcasting the memory's last state
+                    self.conv_linear(memory).unsqueeze(-1) # broadcasting the memory's last state
  
         # Z, F, O: [batch_size, hidden_size, length]
         Z, F, O = gates.split(split_size=self.hidden_size, dim=1)
@@ -48,24 +49,27 @@ class QRNNLayer(nn.Module):
         context = torch.sum(alpha.unsqueeze(1) * self.memory, dim=2)			# context: [batch_size, memory_size]
         h_ = self.rnn_linear(torch.cat([c_, context], dim=1)).unsqueeze(-1)
         h_ = torch.mul(o, h_)
-            
+ 
         # c_, h_: [batch_size, hidden_size, 1]
         return c_, h_
 
-    def forward(self, inputs, input_len, init_state=None, memory=None):
-        # inputs: [batch_size, input_size, length]
+    def forward(self, inputs, input_len, state=None, memory_tuple=None):
+        # inputs: [batch_size, input_size, length], # input_len: [batch_size]
+        # memory_tuple: (last_state, attn_memory):
+        # last_state: [batch_size, memory_size], # attn_memory: [batch_size, memory_size, length']
         # Z, F, O: [batch_size, hidden_size, length]
+        memory = memory_tuple[0] if memory_tuple else None
         Z, F, O = self._conv_step(inputs, memory)
-        
+
         # set initial state
-        c = init_state if init_state else Variable(torch.zeros(Z.size()[:2]).unsqueeze(-1))
-        attn_memory = memory if self.use_attn else None	# set whether to use attn
-        c_list, h_list = [], []
+        c = state if state else Variable(torch.zeros(Z.size()[:2]).unsqueeze(-1))
+        attn_memory = memory if self.use_attn and memory_tuple[1] else None # set whether to use attn
+        c_time, h_time = [], []
         for time, (z, f, o) in enumerate(zip(Z.split(1, 2), F.split(1, 2), O.split(1, 2))):
             c, h = self._rnn_step(z, f, o, c, attn_memory)
             # mask to support variable seq_lengths
             mask = Variable((time < input_len).float().unsqueeze(1).expand_as(h))
-            c_list.append(c*mask); h_list.append(h*mask)
+            c_time.append(c*mask); h_time.append(h*mask)
 
         # return concatenated cell and hidden states: [batch_size, hidden_size, length]
-        return torch.cat(c_list, dim=2), torch.cat(h_list, dim=2)
+        return torch.cat(c_time, dim=2), torch.cat(h_time, dim=2)
