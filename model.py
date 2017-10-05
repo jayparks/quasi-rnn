@@ -16,16 +16,18 @@ class Encoder(nn.Module):
                 input_size, hidden_size, kernel_size, use_attn=False))
                                           
     def forward(self, inputs, input_len):
+        # input_len: [batch_size] torch.LongTensor
         # output: [batch_size, emb_size, length]
         output = self.embedding(inputs).transpose(1, 2)
 
-        c_layer, h_layer = [], []
+        hidden_states = []
         for layer in self.layers:
-            state, output = layer(output, input_len)  # output: [batch_size, hidden_size, length]
-            h_layer.append(output)
-
-        # return a list of hidden states of each layer
-        return c_layer, h_layer
+            _, h = layer(output, input_len)  # h: [batch_size, hidden_size, length]
+            # h_last: [batch_size, hidden_size]
+            h_last = h.transpose(1, 2)[torch.arange(0, len(input_len)).long(), input_len]
+            hidden_states.append((h_last, h))
+        # return a list of the last state and hidden states of each layer
+        return hidden_states
 
 
 class Decoder(nn.Module):
@@ -38,28 +40,26 @@ class Decoder(nn.Module):
         self.layers = []
         for layer_idx in xrange(n_layers):
             input_size = emb_size if layer_idx == 0 else hidden_size
-            use_attn = True if layer_idx == n_layers - 1 else False
+            use_attn = True if layer_idx == n_layers-1 else False
             
             self.layers.append(qrnn_layer(
                 input_size, hidden_size, kernel_size, use_attn=use_attn))
                                           
-    def forward(self, inputs, input_len, states, memory_list):
+    def forward(self, inputs, input_len, states, memory):
         assert len(self.layers) == len(init_states)
         assert len(self.layers) == len(memory_list) 
 
-        c_layer, h_layer = [], []
+        cell_states, hidden_states = [], []
 
         # output: [batch_size, emb_size, length]
         output = self.embedding(inputs).transpose(1, 2)
-        
         for layer_idx, layer in enumerate(self.layers):
-            state, output = \
-                layer(output, input_len, states[layer_idx], memory_list[layer_idx])
-            c_list.append(state); h_list.append(output)
+            c, h = layer(output, input_len, states[layer_idx], memory[layer_idx])
+            cell_states.append(c); hidden_states.append(h)
 
         # The shape of the each state: [batch_size, hidden_size, length]
         # return lists of cell states and hidden_states
-        return c_list, h_list
+        return cell_states, hidden_states
 
 
 class QRRNModel(nn.Module):
@@ -76,24 +76,21 @@ class QRRNModel(nn.Module):
     def encode(self, inputs, input_len):
         return self.encoder(inputs, input_len)
 
-    def decode(self, inputs, input_len, init_states, memory_list):
-        return self.decoder(inputs, input_len, init_states, memory_list)
+    def decode(self, inputs, input_len, init_states, memory):
+        return self.decoder(inputs, input_len, init_states, memory)
 
     # TODO: fix
-    def forward(self, enc_inputs, enc_len, dec_init, dec_inputs):
+    def forward(self, enc_inputs, enc_len, dec_inputs, dec_len):
         # Encode source inputs
-        memory_list = self.encode(enc_inputs)
+        memory = self.encode(enc_inputs, enc_len)
 
-        # The shape of the each state: [Batch_size, Depth, Length]
-        c_list, h_list = self.decode(dec_inputs, dec_init, memory_list)
+        # The shape of the each state: [batch_size, hidden_size, length]
+        _, hidden_states = self.decode(dec_inputs, dec_len, memory=memory)
 
         # return:
-        # i) cell_state list
-        #     it will be used as initial states for decoding
-        
-        # ii) projected hidden_state of the last layer
-        #     first reshape it to [Batch_size x Length, Depth]
-        #     after projection: [Batch_size x Length, Target_vocab_size]
-        h_last = h_list[-1]
+        # projected hidden_state of the last layer: logit
+        #   first reshape it to [batch_size x length, hidden_size]
+        #   after projection: [batch_size x length, tgt_vocab_size]
+        h_last = hidden_states[-1]
 
-        return c_list, self.proj_linear(h_last.view(-1, h_last.size(1)))
+        return self.proj_linear(h_last.view(-1, h_last.size(1)))

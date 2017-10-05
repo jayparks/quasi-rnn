@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from torch import optim
 
 class QRNNLayer(nn.Module):
     def __init__(self, input_size, hidden_size, kernel_size, use_attn=False):
@@ -29,8 +28,7 @@ class QRNNLayer(nn.Module):
 
         gates = self.conv1d(inputs) # gates: [batch_size, 3*hidden_size, length]
         if memory:
-            gates = gates + \
-                    self.conv_linear(memory).unsqueeze(-1) # broadcasting the memory's last state
+            gates = gates + self.conv_linear(memory).unsqueeze(-1) # broadcast the memory
  
         # Z, F, O: [batch_size, hidden_size, length]
         Z, F, O = gates.split(split_size=self.hidden_size, dim=1)
@@ -53,9 +51,9 @@ class QRNNLayer(nn.Module):
         # c_, h_: [batch_size, hidden_size, 1]
         return c_, h_
 
-    def forward(self, inputs, input_len, state=None, memory_tuple=None):
+    def forward(self, inputs, input_len, state=None, memory=None):
         # inputs: [batch_size, input_size, length], # input_len: [batch_size]
-        # memory_tuple: (last_state, attn_memory):
+        # memory: tuple (last_state, attn_memory):
         # last_state: [batch_size, memory_size], # attn_memory: [batch_size, memory_size, length']
         # Z, F, O: [batch_size, hidden_size, length]
         memory = memory_tuple[0] if memory_tuple else None
@@ -71,5 +69,5 @@ class QRNNLayer(nn.Module):
             mask = Variable((time < input_len).float().unsqueeze(1).expand_as(h))
             c_time.append(c*mask); h_time.append(h*mask)
 
-        # return concatenated cell and hidden states: [batch_size, hidden_size, length]
+        # return concatenated cell & hidden states: [batch_size, hidden_size, length]
         return torch.cat(c_time, dim=2), torch.cat(h_time, dim=2)
