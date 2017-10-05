@@ -1,4 +1,3 @@
-
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
@@ -7,15 +6,14 @@ import os
 import math
 import time
 import argparse
-import data_utils
 import numpy as np
 from layer import QRNNLayer
 from model import QRNNModel
 
-import data_utils
-from data_utils import prepare_batch
-from data_utils import prepare_train_batch
-from data_iterator import BiTextIterator
+import data.data_utils as data_utils
+from data.data_iterator import BiTextIterator
+from data.data_iterator import prepare_batch
+from data.data_iterator import prepare_train_batch
 
 use_cuda = torch.cuda.is_available()
 
@@ -46,7 +44,7 @@ def train(config):
     # Load parallel data to train
     # TODO: using PyTorch DataIterator
     print 'Loading training data..'
-    train_set = BiTextIterator(source=config.stc_train,
+    train_set = BiTextIterator(source=config.src_train,
                                target=config.tgt_train,
                                source_dict=config.src_vocab,
                                target_dict=config.tgt_vocab,
@@ -117,9 +115,8 @@ def train(config):
             # Execute a single training step
             optimizer.zero_grad()
 
-            _, dec_logits = model(enc_input, dec_input)
+            dec_logits = model(enc_input, dec_input)
             step_loss = criterion(dec_logits, dec_target.view(-1))
-
             step_loss.backward()
             nn.utils.clip_grad_norm(model.parameters(), config.max_grad_norm)
             optimizer.step()
@@ -139,7 +136,7 @@ def train(config):
                 sents_per_sec = sents_seen / time_elapsed
 
                 print 'Epoch ', train_state['epoch'], 'Step ', train_state['train_step'], \
-                      'Perplexity {0:.2f}'.format(avg_perplexity), 'Step-time ', step_time, \
+                      'Perplexity {0:.2f}'.format(avg_perplexity), 'Step-time {0:.2f}'.format(step_time), \
                       '{0:.2f} sents/s'.format(sents_per_sec), '{0:.2f} words/s'.format(words_per_sec)
 
                 loss = 0.0

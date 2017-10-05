@@ -1,0 +1,6 @@
+**/*.pyc
+**/*.swp
+model/
+europarl-v7.*
+newstest*
+.ipynb*

@@ -17,7 +17,7 @@ class QRNNLayer(nn.Module):
         self.conv_linear = nn.Linear(hidden_size, 3*hidden_size)
         self.rnn_linear = nn.Linear(2*hidden_size, hidden_size)
 
-    def _conv_step(inputs, memory=None)
+    def _conv_step(inputs, memory=None):
         # inputs: [batch_size, input_size, length]
         # memory: [batch_size, memory_size]
         padded = F.pad(inputs.unsqueeze(2), (self.kernel_size-1, 0, 0, 0)) # TODO: fix F.pad(inputs, (self.kernel_size-1, 0,))
@@ -48,17 +48,17 @@ class QRNNLayer(nn.Module):
         # c_, h_: [batch_size, hidden_size, 1]
         return c_, h_
 
-    def forward(self, inputs, input_len, state=None, memory=None):
+    def forward(self, inputs, input_len, state=None, memory_tuple=None):
         # inputs: [batch_size, input_size, length], # input_len: [batch_size]
-        # memory: tuple (last_state, attn_memory):
+        # memory_tuple (last_state, attn_memory):
         # last_state: [batch_size, memory_size], # attn_memory: [batch_size, memory_size, length']
         # Z, F, O: [batch_size, hidden_size, length]
         memory = memory_tuple[0] if memory_tuple else None
         Z, F, O = self._conv_step(inputs, memory)
 
-        # set initial state
+        # set initial state: [batch_size, hidden_size, 1]
         c = state if state else Variable(torch.zeros(Z.size()[:2]).unsqueeze(-1))
-        attn_memory = memory if self.use_attn and memory_tuple[1] else None # set whether to use attn
+        attn_memory = memory_tuple[1] if self.use_attn and memory_tuple[1] else None # set whether to use attn
         c_time, h_time = [], []
         for time, (z, f, o) in enumerate(zip(Z.split(1, 2), F.split(1, 2), O.split(1, 2))):
             c, h = self._rnn_step(z, f, o, c, attn_memory)

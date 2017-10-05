@@ -45,16 +45,21 @@ class Decoder(nn.Module):
             self.layers.append(qrnn_layer(
                 input_size, hidden_size, kernel_size, use_attn=use_attn))
                                           
-    def forward(self, inputs, input_len, states, memory):
-        assert len(self.layers) == len(init_states)
-        assert len(self.layers) == len(memory_list) 
+    def forward(self, inputs, input_len, states, memory_tuples):
+        if states:
+            assert len(self.layers) == len(states)
+        if memory_tuples:
+            assert len(self.layers) == len(memory_tuples)
 
         cell_states, hidden_states = [], []
 
         # output: [batch_size, emb_size, length]
         output = self.embedding(inputs).transpose(1, 2)
         for layer_idx, layer in enumerate(self.layers):
-            c, h = layer(output, input_len, states[layer_idx], memory[layer_idx])
+            state = states[layer_idx] if states else None
+            memory_tuple = memory_tuples[layer_idx] if memory_tuples else None
+
+            c, h = layer(output, input_len, state, memory_tuple)
             cell_states.append(c); hidden_states.append(h)
 
         # The shape of the each state: [batch_size, hidden_size, length]
@@ -62,7 +67,7 @@ class Decoder(nn.Module):
         return cell_states, hidden_states
 
 
-class QRRNModel(nn.Module):
+class QRNNModel(nn.Module):
     def __init__(self, qrnn_layer, n_layers, kernel_size, 
                  hidden_size, emb_size, src_vocab_size, tgt_vocab_size):
         super(QRNNModel, self).__init__()
@@ -76,16 +81,17 @@ class QRRNModel(nn.Module):
     def encode(self, inputs, input_len):
         return self.encoder(inputs, input_len)
 
-    def decode(self, inputs, input_len, init_states, memory):
-        return self.decoder(inputs, input_len, init_states, memory)
+    def decode(self, inputs, input_len, init_states, memory_tuples):
+        return self.decoder(inputs, input_len, init_states, memory_tuples)
 
     # TODO: fix
     def forward(self, enc_inputs, enc_len, dec_inputs, dec_len):
         # Encode source inputs
-        memory = self.encode(enc_inputs, enc_len)
+        memory_tuples = self.encode(enc_inputs, enc_len)
 
         # The shape of the each state: [batch_size, hidden_size, length]
-        _, hidden_states = self.decode(dec_inputs, dec_len, memory=memory)
+        _, hidden_states = self.decode(dec_inputs, dec_len, None, 
+                                       memory_tuples=memory_tuples)
 
         # return:
         # projected hidden_state of the last layer: logit
