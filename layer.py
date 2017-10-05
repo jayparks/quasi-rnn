@@ -20,7 +20,7 @@ class QRNNLayer(nn.Module):
     def _conv_step(self, inputs, memory=None):
         # inputs: [batch_size, input_size, length]
         # memory: [batch_size, memory_size]
-        padded = FF.pad(inputs.unsqueeze(2), (self.kernel_size-1, 0, 0, 0)) # TODO: fix FF.pad(inputs, (self.kernel_size-1, 0,))
+        padded = FF.pad(inputs.unsqueeze(2), (self.kernel_size-1, 0, 0, 0)) # TODO: FF.pad(inputs, (self.kernel_size-1, 0,))
         inputs = padded.squeeze(2) 
         gates = self.conv1d(inputs) # gates: [batch_size, 3*hidden_size, length]
 
@@ -41,10 +41,9 @@ class QRNNLayer(nn.Module):
         alpha = FF.softmax(torch.bmm(c_.transpose(1, 2), attn_memory).squeeze(1))	# alpha: [batch_size, length']
         context = torch.sum(alpha.unsqueeze(1) * attn_memory, dim=2)			# context: [batch_size, memory_size]
         h_ = self.rnn_linear(torch.cat([c_.squeeze(-1), context], dim=1)).unsqueeze(-1)
-        h_ = torch.mul(o, h_)
         
         # c_, h_: [batch_size, hidden_size, 1]
-        return c_, h_
+        return c_, o * h_
 
     def forward(self, inputs, input_len, state=None, memory_tuple=None):
         # inputs: [batch_size, input_size, length], # input_len: [batch_size]
@@ -66,5 +65,6 @@ class QRNNLayer(nn.Module):
             # mask to support variable seq_lengths
             mask = (time < input_len).float().unsqueeze(-1).expand(h.size()[:2]).unsqueeze(-1) # TODO. fix
             c_time.append(c*mask); h_time.append(h*mask)
+        
         # return concatenated cell & hidden states: [batch_size, hidden_size, length]
         return torch.cat(c_time, dim=2), torch.cat(h_time, dim=2)
