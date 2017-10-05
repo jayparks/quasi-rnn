@@ -1,6 +1,6 @@
 **/*.pyc
 **/*.swp
+data/wmt*
+data/newstest*
 model/
-europarl-v7.*
-newstest*
 .ipynb*

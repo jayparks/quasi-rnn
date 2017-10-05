@@ -17,7 +17,6 @@ from data.data_iterator import prepare_train_batch
 
 use_cuda = torch.cuda.is_available()
 
-
 def create_model(config):
     print 'Creating new model parameters..'
     model = QRNNModel(QRNNLayer, config.num_layers, config.kernel_size,
@@ -70,9 +69,9 @@ def train(config):
 
     # Create a Quasi-RNN model
     model, train_state = create_model(config)
-
     if use_cuda:
-        model.cuda()
+        print 'Using gpu..'
+        model = model.cuda()
 
     # Loss and Optimizer
     criterion = nn.CrossEntropyLoss(ignore_index=data_utils.pad_token)
@@ -96,11 +95,11 @@ def train(config):
                 prepare_train_batch(source_seq, target_seq, config.max_seq_len)
             
             if use_cuda:
-                enc_input = Variable(enc_input).cuda()
-                enc_len = Variable(enc_len).cuda()
-                dec_input = Variable(dec_input).cuda()
-                dec_target = Variable(dec_target).cuda()
-                dec_len = Variable(dec_len).cuda()
+                enc_input = Variable(enc_input.cuda())
+                enc_len = Variable(enc_len.cuda())
+                dec_input = Variable(dec_input.cuda())
+                dec_target = Variable(dec_target.cuda())
+                dec_len = Variable(dec_len.cuda())
             else:
                 enc_input = Variable(enc_input)
                 enc_len = Variable(enc_len)
@@ -114,19 +113,20 @@ def train(config):
 
             # Execute a single training step
             optimizer.zero_grad()
-
-            dec_logits = model(enc_input, dec_input)
+            dec_logits = model(enc_input, enc_len, dec_input, dec_len)
             step_loss = criterion(dec_logits, dec_target.view(-1))
             step_loss.backward()
             nn.utils.clip_grad_norm(model.parameters(), config.max_grad_norm)
             optimizer.step()
 
             loss += float(step_loss.data[0]) / config.display_freq
-            words_seen += float(torch.sum(enc_len + dec_len))
-            sents_seen += float(enc_input.size(0))  # batch_size
+            words_seen += torch.sum(enc_len + dec_len).data[0]
+            sents_seen += enc_input.size(0)  # batch_size
+
+            train_state['train_steps'] += 1
 
             # Display training status
-            if train_state['train_step'] % config.display_freq == 0:
+            if train_state['train_steps'] % config.display_freq == 0:
 
                 avg_perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
                 time_elapsed = time.time() - start_time
@@ -135,7 +135,7 @@ def train(config):
                 words_per_sec = words_seen / time_elapsed
                 sents_per_sec = sents_seen / time_elapsed
 
-                print 'Epoch ', train_state['epoch'], 'Step ', train_state['train_step'], \
+                print 'Epoch ', train_state['epoch'], 'Step ', train_state['train_steps'], \
                       'Perplexity {0:.2f}'.format(avg_perplexity), 'Step-time {0:.2f}'.format(step_time), \
                       '{0:.2f} sents/s'.format(sents_per_sec), '{0:.2f} words/s'.format(words_per_sec)
 
@@ -144,7 +144,7 @@ def train(config):
                 start_time = time.time()
 
             # Execute a validation process
-            if valid_set and train_state['train_step'] % config.valid_freq == 0:
+            if valid_set and train_state['train_steps'] % config.valid_freq == 0:
                 print 'Validation step'
                 
                 valid_steps = 0
@@ -155,10 +155,22 @@ def train(config):
                     enc_input, enc_len, dec_input, dec_target, dec_len = \
                         prepare_train_batch(source_seq, target_seq)
 
-                    dec_hidden, dec_logits = model(enc_input, dec_input)
-                    step_loss = criterion(dec_logits, dec_target.view(-1))
+                    if use_cuda:
+                        enc_input = Variable(enc_input.cuda())
+                        enc_len = Variable(enc_len.cuda())
+                        dec_input = Variable(dec_input.cuda())
+                        dec_target = Variable(dec_target.cuda())
+                        dec_len = Variable(dec_len.cuda())
+                    else:
+                        enc_input = Variable(enc_input)
+                        enc_len = Variable(enc_len)
+                        dec_input = Variable(dec_input)
+                        dec_target = Variable(dec_target)
+                        dec_len = Variable(dec_len)
 
-                    valid_steps += 1                    
+                    dec_logits = model(enc_input, enc_len, dec_input, dec_len)
+                    step_loss = criterion(dec_logits, dec_target.view(-1))
+                    valid_steps += 1 
                     valid_loss += float(step_loss.data[0])
                     valid_sents_seen += enc_input.size(0)
                     print '  {} samples seen'.format(valid_sents_seen)
@@ -166,15 +178,13 @@ def train(config):
                 print 'Valid perplexity: {0:.2f}'.format(math.exp(valid_loss / valid_steps))
 
             # Save the model checkpoint
-            if train_state['train_step'] % config.save_freq == 0:
+            if train_state['train_steps'] % config.save_freq == 0:
                 print 'Saving the model..'
 
                 train_state['state_dict'] = model.state_dict()
                 state = dict(list(train_state.items()))
                 model_path = os.path.join(config.model_dir, config.model_name)
                 torch.save(state, model_path)
-
-            train_state['train_step'] += 1
 
         # Increase the epoch index of the model
         train_state['epoch'] += 1
@@ -209,8 +219,8 @@ if __name__ == "__main__":
     parser.add_argument('--maxi_batches', type=int, default=20)
     parser.add_argument('--max_seq_len', type=int, default=50)
     parser.add_argument('--display_freq', type=int, default=100)
-    parser.add_argument('--save_freq', type=int, default=100)
-    parser.add_argument('--valid_freq', type=int, default=100)
+    parser.add_argument('--save_freq', type=int, default=200)
+    parser.add_argument('--valid_freq', type=int, default=200)
     parser.add_argument('--model_dir', type=str, default='model/')
     parser.add_argument('--model_name', type=str, default='model.pkl')
     parser.add_argument('--shuffle', type=bool, default=True)

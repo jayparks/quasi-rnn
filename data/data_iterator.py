@@ -1,4 +1,4 @@
-
+import torch
 import numpy as np
 import shuffle
 from util import load_dict
@@ -279,11 +279,11 @@ def prepare_batch(seqs_x, maxlen=None):
     # seqs_x: a list of sentences
     lengths_x = [len(s) for s in seqs_x]
 
-    if maxlen:
+    if maxlen is not None:
         new_seqs_x = []
         new_lengths_x = []
         for l_x, s_x in zip(lengths_x, seqs_x):
-            if l_x <= maxlen:
+            if maxlen is None or l_x <= maxlen:
                 new_seqs_x.append(s_x)
                 new_lengths_x.append(l_x)
         lengths_x = new_lengths_x
@@ -297,7 +297,7 @@ def prepare_batch(seqs_x, maxlen=None):
     x_lengths = torch.LongTensor(lengths_x)
     maxlen_x = torch.max(x_lengths)
 
-    x = torch.ones(batch_size, maxlen_x) * pad_token
+    x = torch.ones(batch_size, maxlen_x) * data_utils.pad_token
     
     for idx, s_x in enumerate(seqs_x):
         x[idx, :lengths_x[idx]] = torch.LongTensor(s_x)
@@ -320,7 +320,7 @@ def prepare_train_batch(seqs_x, seqs_y, maxlen=None):
                 new_seqs_x.append(s_x)
                 new_lengths_x.append(l_x)
                 new_seqs_y.append(s_y)
-                new_lengths_y.append(l_y + 1)
+                new_lengths_y.append(l_y)
         lengths_x = new_lengths_x
         seqs_x = new_seqs_x
         lengths_y = new_lengths_y
@@ -336,21 +336,21 @@ def prepare_train_batch(seqs_x, seqs_y, maxlen=None):
 
     maxlen_x = torch.max(x_lengths)
     maxlen_y = torch.max(y_lengths)
-
-    x = torch.ones(batch_size, maxlen_x) * pad_token
-    # length + 1 for _GO or EOS token
-    y_input = torch.ones(batch_size, maxlen_y) * pad_token
-    y_target = torch.ones(batch_size, maxlen_y) * pad_token
     
+    x = torch.ones(batch_size, maxlen_x).long() * data_utils.pad_token
+    # length + 1 for _GO or EOS token 
+    y_input = torch.ones(batch_size, maxlen_y+1).long() * data_utils.pad_token
+    y_target = torch.ones(batch_size, maxlen_y+1).long() * data_utils.pad_token
+   
     for idx, [s_x, s_y] in enumerate(zip(seqs_x, seqs_y)):
         x[idx, :lengths_x[idx]] = torch.LongTensor(s_x)
- 
+
         # insert _GO token at the beginning of a sequence
-        y_input[idx, 0] = start_token
-        y_input[idx, 1:1+lengths_y[idx]] = torch.LongTensor(s_y)
+        y_input[idx, 0] = data_utils.start_token
+        y_input[idx, 1:lengths_y[idx]+1] = torch.LongTensor(s_y)
 
         # insert EOS token at the end of a sequence
         y_target[idx, :lengths_y[idx]] = torch.LongTensor(s_y)
-        y_target[idx, lengths_y[idx]] = end_token
+        y_target[idx, lengths_y[idx]] = data_utils.end_token
 
     return x, x_lengths, y_input, y_target, y_lengths
