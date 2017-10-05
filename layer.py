@@ -17,9 +17,6 @@ class QRNNLayer(nn.Module):
         self.conv_linear = nn.Linear(hidden_size, 3*hidden_size)
         self.rnn_linear = nn.Linear(2*hidden_size, hidden_size)
 
-        self.context = None
-        self.hidden = None
-
     def _conv_step(inputs, memory=None)
         # inputs: [batch_size, input_size, length]
         # memory: [batch_size, memory_size]
