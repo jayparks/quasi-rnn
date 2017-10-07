@@ -15,19 +15,27 @@ class Encoder(nn.Module):
         self.layers = nn.Sequential(*layers)
                                           
     def forward(self, inputs, input_len):
-        # input_len: [batch_size] torch.LongTensor
+        # input_len: [batch_size] Variable(torch.LongTensor)
         # h: [batch_size, emb_size, length]
         h = self.embedding(inputs).transpose(1, 2)
 
-        hidden_states = []
+        last_states, hidden_states = [], []
         for layer in self.layers:
-            _, h = layer(h, input_len)  # h: [batch_size, hidden_size, length]
-            # h_last: [batch_size, hidden_size]
+            c, h = layer(h, keep_len=True)  # c, h: [batch_size, hidden_size, length]
+            
+            time = torch.arange(0, h.size(2)).expand_as(h).long()
+            # mask to support variable seq lengths
+            mask = (input_len.unsqueeze(-1).unsqueeze(-1) > time).float()
+            h = h * mask
+
+            # c_last, h_last: [batch_size, hidden_size]           
+            c_last = c.transpose(1, 2)[range(len(inputs)), (input_len-1).data,:]
             h_last = h.transpose(1, 2)[range(len(inputs)), (input_len-1).data,:]
-            hidden_states.append((h_last, h))
+            last_states(torch.cat([c_last, h_last], dim=0)) # [batch_size x 2, hidden_size]
+            hidden_states.append(h)
 
         # return a list of the last state and hidden states of each layer
-        return hidden_states
+        return last_states, hidden_states
 
 
 class Decoder(nn.Module):
@@ -43,21 +51,19 @@ class Decoder(nn.Module):
             layers.append(qrnn_layer(input_size, hidden_size, kernel_size, use_attn))
         self.layers = nn.Sequential(*layers)
                                           
-    def forward(self, inputs, input_len, states, memory_tuples):
-        if states:
-            assert len(self.layers) == len(states)
-        if memory_tuples:
-            assert len(self.layers) == len(memory_tuples)
+    def forward(self, inputs, init_states, memories, keep_len):
+        assert len(self.layers) == len(init_states)
+        assert len(self.layers) == len(memories)
 
         cell_states, hidden_states = [], []
 
         # h: [batch_size, emb_size, length]
         h = self.embedding(inputs).transpose(1, 2)
         for layer_idx, layer in enumerate(self.layers):
-            state = states[layer_idx] if states else None
-            memory_tuple = memory_tuples[layer_idx] if memory_tuples else None
+            state = init_states[layer_idx]
+            memory = memories[layer_idx]
 
-            c, h = layer(h, input_len, state, memory_tuple)
+            c, h = layer(h, state, memory, keep_len)
             cell_states.append(c); hidden_states.append(h)
 
         # The shape of the each state: [batch_size, hidden_size, length]
@@ -79,9 +85,9 @@ class QRNNModel(nn.Module):
     def encode(self, inputs, input_len):
         return self.encoder(inputs, input_len)
 
-    def decode(self, inputs, input_len, init_states, memory_tuples):
-        cell_states, hidden_states = self.decoder(inputs, input_len, 
-                                                  init_states, memory_tuples)
+    def decode(self, inputs, init_states, memories, keep_len):
+        cell_states, hidden_states = self.decoder(inputs, init_states, 
+                                                  memories, keep_len)
         # return:
         # projected hidden_state of the last layer: logit
         #   first reshape it to [batch_size x length, hidden_size]
@@ -90,12 +96,11 @@ class QRNNModel(nn.Module):
 
         return cell_states, self.proj_linear(h_last.view(-1, h_last.size(1)))
 
-    def forward(self, enc_inputs, enc_len, dec_inputs, dec_len):
+    def forward(self, enc_inputs, enc_len, dec_inputs):
         # Encode source inputs
-        memory_tuples = self.encode(enc_inputs, enc_len)
+        init_states, memories = self.encode(enc_inputs, enc_len)
         
         # logits: [batch_size x length, tgt_vocab_size]
-        _, logits = self.decode(dec_inputs, dec_len, None, 
-                                memory_tuples=memory_tuples)
+        _, logits = self.decode(dec_inputs, init_states, memories, keep_len=True)
 
         return logits

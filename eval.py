@@ -1,24 +1,23 @@
+#!/usr/bin/env python
+# coding: utf-8
 
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
 
 import os
-import math
-import time
 import argparse
-import data_utils
-import numpy as np
 from layer import QRNNLayer
 from model import QRNNModel
 
-import data_utils
-from data_iterator import BiTextIterator
-from data_utils import prepare_batch
-from data_utils import prepare_train_batch
+from data_utils import fopen
+from data_utils import load_inv_dict
+from data_utils import seq2words
+
+from data_iterator import TextIterator
+from data_iterator import prepare_batch
 
 use_cuda = torch.cuda.is_available()
-
 
 def load_model(config):
     model = QRNNModel(QRNNLayer, config.num_layers, config.kernel_size,
@@ -43,36 +42,53 @@ def load_model(config):
 def decode(config):
     # Load source data to decode
     test_set = TextIterator(source=config['decode_input'],
-                            batch_size=config['batch_size'],
                             source_dict=config['src_vocab'],
-                            maxlen=None,
-                            n_words_source=config['num_enc_symbols'])    
+                            batch_size=config['batch_size'],
+                            n_words_source=config['num_enc_symbols'],
+                            maxlen=None)
 
     # Load inverse dictionary used in decoding
-    target_inv_dict = data_utils.load_inv_dict(config['tgt_vocab'])
+    target_inv_dict = load_inv_dict(config['tgt_vocab'])
 
     model = load_model(config)
+
     if use_cuda:
-        model.cuda()
+        model.cuda(); inputs = inputs.cuda()
 
-    inputs = Variable(torch.ones(config.batch_size, 1) * data_utils.start_token)
     try:
-        fout = [data_utils.fopen(config.decode_output, 'w')]
-
+        fout = fopen(config.decode_output, 'w')
         for idx, source_seq in enumerate(test_set):
             source, source_len = prepare_batch(source_seq)
-            memory_tuples = model.encode(source, source_len)
 
-            temp = []
+            if use_cuda:
+                source = Variable(source.cuda())
+                source_len = Variable(source_len.cuda())
+            else:
+                source = Variable(source)
+                source_len = Variable(source_len)
+
+            states, memories = model.encode(source, source_len)
+            
+            preds_prev = Variable(
+                torch.zeros(config.batch_size, config.max_decode_step + config.kernel_size-1).long())
+            preds_prev[:,config.kernel_size-1] = (torch.ones(config.batch_size, ) * data_utils.start_token).long()
+            preds = torch.zeros(config.batch_size, config.max_decode_step).long()
+
+            if use_cuda:
+                preds_prev.cuda(); preds.cuda()
+
+            states = None
             for t in xrange(config.max_decode_step):
-                states, logits = model.decode(inputs, states, memory_tuples) # TODO.fix
-                inputs = torch.max(logit, dim=1).unsqueeze(-1)
-                temp.append(inputs)
+                # logits: [batch_size x 1, tgt_vocab_size]
+                states, logits = model.decode(preds_prev[:,t:t+config.kernel_size], 
+                                              states, memories, keep_len=False)
+                outputs = torch.max(logits, dim=1)[1]
+                preds[:,t] = outputs
+                preds_prev[:,t+config.kernel_size] = outputs
 
-            # outputs: [batch_size, max_decode_step]
-            outputs = torch.cat(temp, dim=1)
-            for seq in outputs:
-                fout.write(str(data_utils.seq2words(seq, target_inv_dict)) + '\n')
+            for seq in preds:
+                fout.write(str(seq2words(seq, target_inv_dict)) + '\n')
+                fout.flush()
 
             print '  {}th line decoded'.format(idx * config.batch_size)
         print 'Decoding terminated'
@@ -91,7 +107,7 @@ if __name__ == "__main__":
     parser.add_argument('--decode_input', type=str, default=None)
     parser.add_argument('--decode_output', type=str, default=None)
     parser.add_argument('--batch_size', type=int, default=1)
-    parser.add_argument('--max_decode_step', type=int, default=200)
+    parser.add_argument('--max_decode_step', type=int, default=100)
     
     config = parser.parse_args()
     print(config)

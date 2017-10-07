@@ -274,7 +274,7 @@ class BiTextIterator:
         return source, target
 
 
-    # batch preparation of a given sequence
+# batch preparation of a given sequence
 def prepare_batch(seqs_x, maxlen=None):
     # seqs_x: a list of sentences
     lengths_x = [len(s) for s in seqs_x]
@@ -297,7 +297,7 @@ def prepare_batch(seqs_x, maxlen=None):
     x_lengths = torch.LongTensor(lengths_x)
     maxlen_x = torch.max(x_lengths)
 
-    x = torch.ones(batch_size, maxlen_x) * data_utils.pad_token
+    x = torch.ones(batch_size, maxlen_x).long() * data_utils.pad_token
     
     for idx, s_x in enumerate(seqs_x):
         x[idx, :lengths_x[idx]] = torch.LongTensor(s_x)

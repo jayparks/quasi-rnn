@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# coding: utf-8
+
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
@@ -113,7 +116,7 @@ def train(config):
 
             # Execute a single training step
             optimizer.zero_grad()
-            dec_logits = model(enc_input, enc_len, dec_input, dec_len)
+            dec_logits = model(enc_input, enc_len, dec_input)
             step_loss = criterion(dec_logits, dec_target.view(-1))
             step_loss.backward()
             nn.utils.clip_grad_norm(model.parameters(), config.max_grad_norm)
