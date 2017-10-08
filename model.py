@@ -23,7 +23,9 @@ class Encoder(nn.Module):
         for layer in self.layers:
             c, h = layer(h, keep_len=True)  # c, h: [batch_size, hidden_size, length]
             
-            time = torch.arange(0, h.size(2)).expand_as(h).long()
+            time = Variable(torch.arange(0, h.size(2)).expand_as(h).long())
+            if h.is_cuda:
+                time = time.cuda()
             # mask to support variable seq lengths
             mask = (input_len.unsqueeze(-1).unsqueeze(-1) > time).float()
             h = h * mask
@@ -31,8 +33,8 @@ class Encoder(nn.Module):
             # c_last, h_last: [batch_size, hidden_size]           
             c_last = c.transpose(1, 2)[range(len(inputs)), (input_len-1).data,:]
             h_last = h.transpose(1, 2)[range(len(inputs)), (input_len-1).data,:]
-            last_states(torch.cat([c_last, h_last], dim=0)) # [batch_size x 2, hidden_size]
-            hidden_states.append(h)
+            last_states.append(c_last)
+            hidden_states.append((h_last, h))
 
         # return a list of the last state and hidden states of each layer
         return last_states, hidden_states
@@ -56,7 +58,6 @@ class Decoder(nn.Module):
         assert len(self.layers) == len(memories)
 
         cell_states, hidden_states = [], []
-
         # h: [batch_size, emb_size, length]
         h = self.embedding(inputs).transpose(1, 2)
         for layer_idx, layer in enumerate(self.layers):

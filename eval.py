@@ -20,18 +20,16 @@ from data_iterator import prepare_batch
 use_cuda = torch.cuda.is_available()
 
 def load_model(config):
-    model = QRNNModel(QRNNLayer, config.num_layers, config.kernel_size,
-    	              config.hidden_size, config.emb_size, 
-    	              config.num_enc_symbols, config.num_dec_symbols)
-
-    # Initialize a training state
-    train_state = { 'epoch': 0, 'train_steps': 0, 'state_dict': None }
-
     model_path = os.path.join(config.model_dir, config.model_name)
     if os.path.exists(model_path):
         print 'Reloading model parameters..'
-        checkpoint = torch.load(model_path)
-        model.load_state_dict(checkpoint['state_dict'])
+        ckpt = torch.load(model_path)
+        model = QRNNModel(QRNNLayer, 
+                          ckpt['num_layers'], ckpt['kernel_size'], 
+                          ckpt['hidden_size'], ckpt['emb_size'], 
+    	                  ckpt['num_enc_symbols'], ckpt['num_dec_symbols'])
+
+        model.load_state_dict(ckpt['state_dict'])
 
     else:
     	raise ValueError(
@@ -41,19 +39,17 @@ def load_model(config):
 
 def decode(config):
     # Load source data to decode
-    test_set = TextIterator(source=config['decode_input'],
-                            source_dict=config['src_vocab'],
-                            batch_size=config['batch_size'],
-                            n_words_source=config['num_enc_symbols'],
+    test_set = TextIterator(source=config.decode_input,
+                            source_dict=config.src_vocab,
+                            batch_size=config.batch_size,
+                            n_words_source=config.num_enc_symbols,
                             maxlen=None)
 
-    # Load inverse dictionary used in decoding
-    target_inv_dict = load_inv_dict(config['tgt_vocab'])
-
     model = load_model(config)
+    target_inv_dict = load_inv_dict(config.tgt_vocab)
 
     if use_cuda:
-        model.cuda(); inputs = inputs.cuda()
+        model = model.cuda()
 
     try:
         fout = fopen(config.decode_output, 'w')
@@ -70,21 +66,20 @@ def decode(config):
             states, memories = model.encode(source, source_len)
             
             preds_prev = Variable(
-                torch.zeros(config.batch_size, config.max_decode_step + config.kernel_size-1).long())
-            preds_prev[:,config.kernel_size-1] = (torch.ones(config.batch_size, ) * data_utils.start_token).long()
+                torch.zeros(config.batch_size, config.max_decode_step + model.kernel_size-1).long())
+            preds_prev[:,model.kernel_size-1] = (torch.ones(config.batch_size, ) * data_utils.start_token).long()
             preds = torch.zeros(config.batch_size, config.max_decode_step).long()
 
             if use_cuda:
                 preds_prev.cuda(); preds.cuda()
 
-            states = None
             for t in xrange(config.max_decode_step):
                 # logits: [batch_size x 1, tgt_vocab_size]
-                states, logits = model.decode(preds_prev[:,t:t+config.kernel_size], 
+                states, logits = model.decode(preds_prev[:,t:t+model.kernel_size], 
                                               states, memories, keep_len=False)
                 outputs = torch.max(logits, dim=1)[1]
                 preds[:,t] = outputs
-                preds_prev[:,t+config.kernel_size] = outputs
+                preds_prev[:,t+model.kernel_size] = outputs
 
             for seq in preds:
                 fout.write(str(seq2words(seq, target_inv_dict)) + '\n')

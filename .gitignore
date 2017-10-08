@@ -4,3 +4,4 @@ data/wmt*
 data/newstest*
 model/
 .ipynb*
+train.sh

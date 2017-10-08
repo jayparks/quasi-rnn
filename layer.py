@@ -27,7 +27,7 @@ class QRNNLayer(nn.Module):
 
         gates = self.conv1d(inputs) # gates: [batch_size, 3*hidden_size, length]
         if cond is not None:
-            gates = gates + self.conv_linear(cond).unsqueeze(-1) # broadcast the memory
+            gates = gates + self.conv_linear(cond).unsqueeze(-1) # broadcast cond
 
         # Z, F, O: [batch_size, hidden_size, length]
         Z, F, O = gates.split(split_size=self.hidden_size, dim=1)
@@ -38,7 +38,7 @@ class QRNNLayer(nn.Module):
         # z, f, o, c: [batch_size, hidden_size, 1]
         # attn_memory: [batch_size, memory_size, length']
         c_ = (1 - f) * z if c is None else f * c + (1 - f) * z
-        if attn_memory is None:
+        if not self.use_attn: 
             return c_, (o * c_)	# return c_t and h_t
 
         alpha = FF.softmax(torch.bmm(c_.transpose(1, 2), attn_memory).squeeze(1))	# alpha: [batch_size, length']
@@ -50,14 +50,12 @@ class QRNNLayer(nn.Module):
 
     def forward(self, inputs, state=None, memory=None, keep_len=True):
         # inputs: [batch_size, input_size, length]
-        # c, cond_h: [batch_size, hidden_size]
-        c, cond_h = (None, None) if state is None else state.chunk(2, dim=0)
-        if c is not None:
-            c = c.unsqueeze(-1) # unsqueeze dim to feed in the _rnn_step function
+        # state: [batch_size, hidden_size]
+        c = state.unsqueeze(-1) if state is not None else None # unsqueeze dim to feed in _rnn_step
+        conv_memory, attn_memory = memory if memory is not None else (None, None)
 
         # Z, F, O: [batch_size, hidden_size, length]
-        Z, F, O = self._conv_step(inputs, cond_h, keep_len) 
-        attn_memory = memory if self.use_attn and memory else None # set whether to use attn
+        Z, F, O = self._conv_step(inputs, keep_len, conv_memory)
         c_time, h_time = [], []
         for time, (z, f, o) in enumerate(zip(Z.split(1, 2), F.split(1, 2), O.split(1, 2))):
             c, h = self._rnn_step(z, f, o, c, attn_memory)

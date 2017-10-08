@@ -26,20 +26,21 @@ def create_model(config):
     	              config.hidden_size, config.emb_size, 
     	              config.num_enc_symbols, config.num_dec_symbols)
 
-    # Initialize a training state
-    train_state = { 'epoch': 0, 'train_steps': 0, 'state_dict': None }
-
+    # Initialize a model state
+    model_state = vars(config)
+    model_state['epoch'], model_state['train_steps'] = 0, 0
+    model_state['state_dict'] = None
+    
     model_path = os.path.join(config.model_dir, config.model_name)
-
     if os.path.exists(model_path):
         print 'Reloading model parameters..'
         checkpoint = torch.load(model_path)
+
+        model_state['epoch'] = checkpoint['epoch']
+        model_state['train_steps'] = checkpoint['train_steps']
         model.load_state_dict(checkpoint['state_dict'])
 
-        train_state['epoch'] = checkpoint['epoch']
-        train_state['train_steps'] = checkpoint['train_steps']
-
-    return model, train_state
+    return model, model_state
 
 
 def train(config):
@@ -71,7 +72,7 @@ def train(config):
         valid_set = None
 
     # Create a Quasi-RNN model
-    model, train_state = create_model(config)
+    model, model_state = create_model(config)
     if use_cuda:
         print 'Using gpu..'
         model = model.cuda()
@@ -87,9 +88,9 @@ def train(config):
     # Training loop
     print 'Training..'
     for epoch_idx in xrange(config.max_epochs):
-        if train_state['epoch'] >= config.max_epochs:
+        if model_state['epoch'] >= config.max_epochs:
             print 'Training is already complete.', \
-                  'current epoch:{}, max epoch:{}'.format(train_state['epoch'], config.max_epochs)
+                  'current epoch:{}, max epoch:{}'.format(model_state['epoch'], config.max_epochs)
             break
 
         for source_seq, target_seq in train_set:    
@@ -126,10 +127,10 @@ def train(config):
             words_seen += torch.sum(enc_len + dec_len).data[0]
             sents_seen += enc_input.size(0)  # batch_size
 
-            train_state['train_steps'] += 1
+            model_state['train_steps'] += 1
 
             # Display training status
-            if train_state['train_steps'] % config.display_freq == 0:
+            if model_state['train_steps'] % config.display_freq == 0:
 
                 avg_perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
                 time_elapsed = time.time() - start_time
@@ -138,7 +139,7 @@ def train(config):
                 words_per_sec = words_seen / time_elapsed
                 sents_per_sec = sents_seen / time_elapsed
 
-                print 'Epoch ', train_state['epoch'], 'Step ', train_state['train_steps'], \
+                print 'Epoch ', model_state['epoch'], 'Step ', model_state['train_steps'], \
                       'Perplexity {0:.2f}'.format(avg_perplexity), 'Step-time {0:.2f}'.format(step_time), \
                       '{0:.2f} sents/s'.format(sents_per_sec), '{0:.2f} words/s'.format(words_per_sec)
 
@@ -147,7 +148,7 @@ def train(config):
                 start_time = time.time()
 
             # Execute a validation process
-            if valid_set and train_state['train_steps'] % config.valid_freq == 0:
+            if valid_set and model_state['train_steps'] % config.valid_freq == 0:
                 print 'Validation step'
                 
                 valid_steps = 0
@@ -171,7 +172,7 @@ def train(config):
                         dec_target = Variable(dec_target)
                         dec_len = Variable(dec_len)
 
-                    dec_logits = model(enc_input, enc_len, dec_input, dec_len)
+                    dec_logits = model(enc_input, enc_len, dec_input)
                     step_loss = criterion(dec_logits, dec_target.view(-1))
                     valid_steps += 1 
                     valid_loss += float(step_loss.data[0])
@@ -181,17 +182,17 @@ def train(config):
                 print 'Valid perplexity: {0:.2f}'.format(math.exp(valid_loss / valid_steps))
 
             # Save the model checkpoint
-            if train_state['train_steps'] % config.save_freq == 0:
+            if model_state['train_steps'] % config.save_freq == 0:
                 print 'Saving the model..'
 
-                train_state['state_dict'] = model.state_dict()
-                state = dict(list(train_state.items()))
+                model_state['state_dict'] = model.state_dict()
+#                state = dict(list(model_state.items()))
                 model_path = os.path.join(config.model_dir, config.model_name)
-                torch.save(state, model_path)
+                torch.save(model_state, model_path)
 
         # Increase the epoch index of the model
-        train_state['epoch'] += 1
-        print 'Epoch {0:} DONE'.format(train_state['epoch'])
+        model_state['epoch'] += 1
+        print 'Epoch {0:} DONE'.format(model_state['epoch'])
 
 
 if __name__ == "__main__":
