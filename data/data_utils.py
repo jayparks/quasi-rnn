@@ -52,7 +52,7 @@ def load_dict(filename):
             return pkl.load(f)
 
 
-def load_inverse_dict(dict_path):
+def load_inv_dict(dict_path):
     orig_dict = load_dict(dict_path)
     idict = {}
     for words, idx in orig_dict.iteritems():

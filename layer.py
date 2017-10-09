@@ -17,17 +17,17 @@ class QRNNLayer(nn.Module):
         self.conv_linear = nn.Linear(hidden_size, 3*hidden_size)
         self.rnn_linear = nn.Linear(2*hidden_size, hidden_size)
 
-    def _conv_step(self, inputs, keep_len, cond=None):
+    def _conv_step(self, inputs, keep_len, memory=None):
         # inputs: [batch_size, input_size, length]
-        # cond: [batch_size, memory_size]
+        # memory: [batch_size, memory_size]
         if keep_len:
             # TODO: FF.pad(inputs, (self.kernel_size-1, 0,))
             padded = FF.pad(inputs.unsqueeze(2), (self.kernel_size-1, 0, 0, 0))
-            inputs = padded.squeeze(2) 
+            inputs = padded.squeeze(2)
 
         gates = self.conv1d(inputs) # gates: [batch_size, 3*hidden_size, length]
-        if cond is not None:
-            gates = gates + self.conv_linear(cond).unsqueeze(-1) # broadcast cond
+        if memory is not None:
+            gates = gates + self.conv_linear(memory).unsqueeze(-1) # broadcast memory
 
         # Z, F, O: [batch_size, hidden_size, length]
         Z, F, O = gates.split(split_size=self.hidden_size, dim=1)

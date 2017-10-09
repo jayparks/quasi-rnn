@@ -54,14 +54,14 @@ class Decoder(nn.Module):
         self.layers = nn.Sequential(*layers)
                                           
     def forward(self, inputs, init_states, memories, keep_len):
-        assert len(self.layers) == len(init_states)
+#        assert len(self.layers) == len(init_states)
         assert len(self.layers) == len(memories)
 
         cell_states, hidden_states = [], []
         # h: [batch_size, emb_size, length]
         h = self.embedding(inputs).transpose(1, 2)
         for layer_idx, layer in enumerate(self.layers):
-            state = init_states[layer_idx]
+            state = init_states[layer_idx] if init_states is not None else None
             memory = memories[layer_idx]
 
             c, h = layer(h, state, memory, keep_len)

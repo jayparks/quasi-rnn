@@ -2,6 +2,8 @@
 **/*.swp
 data/wmt*
 data/newstest*
+data/train.*
+data/test.*
 model/
 .ipynb*
 train.sh

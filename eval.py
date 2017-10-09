@@ -10,82 +10,86 @@ import argparse
 from layer import QRNNLayer
 from model import QRNNModel
 
-from data_utils import fopen
-from data_utils import load_inv_dict
-from data_utils import seq2words
+import data.data_utils as data_utils
+from data.data_utils import fopen
+from data.data_utils import load_inv_dict
+from data.data_utils import seq2words
 
-from data_iterator import TextIterator
-from data_iterator import prepare_batch
+from data.data_iterator import TextIterator
+from data.data_iterator import prepare_batch
 
 use_cuda = torch.cuda.is_available()
 
 def load_model(config):
-    model_path = os.path.join(config.model_dir, config.model_name)
-    if os.path.exists(model_path):
+    if os.path.exists(config.model_path):
         print 'Reloading model parameters..'
-        ckpt = torch.load(model_path)
-        model = QRNNModel(QRNNLayer, 
-                          ckpt['num_layers'], ckpt['kernel_size'], 
-                          ckpt['hidden_size'], ckpt['emb_size'], 
-    	                  ckpt['num_enc_symbols'], ckpt['num_dec_symbols'])
-
-        model.load_state_dict(ckpt['state_dict'])
-
+        checkpoint = torch.load(config.model_path)
+        model = QRNNModel(QRNNLayer, checkpoint['num_layers'], checkpoint['kernel_size'],
+                          checkpoint['hidden_size'], checkpoint['emb_size'], 
+                          checkpoint['num_enc_symbols'], checkpoint['num_dec_symbols'])
+        model.load_state_dict(checkpoint['state_dict'])
     else:
     	raise ValueError(
     		'No such file:[{}]'.format(config.model_path))
-    return model
+
+    for key in config.__dict__:
+        checkpoint[key] = config.__dict__[key]
+
+    return model, checkpoint
 
 
 def decode(config):
-    # Load source data to decode
-    test_set = TextIterator(source=config.decode_input,
-                            source_dict=config.src_vocab,
-                            batch_size=config.batch_size,
-                            n_words_source=config.num_enc_symbols,
-                            maxlen=None)
 
-    model = load_model(config)
-    target_inv_dict = load_inv_dict(config.tgt_vocab)
+    model, config = load_model(config)
+    
+    # Load source data to decode
+    test_set = TextIterator(source=config['decode_input'],
+                            source_dict=config['src_vocab'],
+                            batch_size=config['batch_size'],
+                            n_words_source=config['num_enc_symbols'],
+                            maxlen=None)
+    target_inv_dict = load_inv_dict(config['tgt_vocab'])
 
     if use_cuda:
+        print 'Using gpu..'
         model = model.cuda()
 
     try:
-        fout = fopen(config.decode_output, 'w')
+        print 'Decoding starts..'
+        fout = fopen(config['decode_output'], 'w')
         for idx, source_seq in enumerate(test_set):
             source, source_len = prepare_batch(source_seq)
+
+            preds_prev = torch.zeros(config['batch_size'], config['max_decode_step']).long()
+            preds_prev[:,0] += data_utils.start_token
+            preds = torch.zeros(config['batch_size'], config['max_decode_step']).long()
 
             if use_cuda:
                 source = Variable(source.cuda())
                 source_len = Variable(source_len.cuda())
+                preds_prev = Variable(preds_prev.cuda())
+                preds = preds.cuda()
             else:
                 source = Variable(source)
                 source_len = Variable(source_len)
+                preds_prev = Variable(preds_prev)
 
             states, memories = model.encode(source, source_len)
             
-            preds_prev = Variable(
-                torch.zeros(config.batch_size, config.max_decode_step + model.kernel_size-1).long())
-            preds_prev[:,model.kernel_size-1] = (torch.ones(config.batch_size, ) * data_utils.start_token).long()
-            preds = torch.zeros(config.batch_size, config.max_decode_step).long()
+            for t in xrange(config['max_decode_step']):
+                # logits: [batch_size x max_decode_step, tgt_vocab_size]
+                _, logits = model.decode(preds_prev, None, memories, keep_len=True)
+                # outputs: [batch_size, max_decode_step]
+                outputs = torch.max(logits, dim=1)[1].view(config['batch_size'], -1)
+                preds[:,t] = outputs[:,t].data
+                if t < config['max_decode_step'] - 1:
+                    preds_prev[:,t+1] = outputs[:,t]
 
-            if use_cuda:
-                preds_prev.cuda(); preds.cuda()
-
-            for t in xrange(config.max_decode_step):
-                # logits: [batch_size x 1, tgt_vocab_size]
-                states, logits = model.decode(preds_prev[:,t:t+model.kernel_size], 
-                                              states, memories, keep_len=False)
-                outputs = torch.max(logits, dim=1)[1]
-                preds[:,t] = outputs
-                preds_prev[:,t+model.kernel_size] = outputs
-
-            for seq in preds:
-                fout.write(str(seq2words(seq, target_inv_dict)) + '\n')
+            for i in xrange(len(preds)):
+                fout.write(str(seq2words(preds[i], target_inv_dict)) + '\n')
                 fout.flush()
 
-            print '  {}th line decoded'.format(idx * config.batch_size)
+            print '  {}th line decoded'.format(idx * config['batch_size'])
         print 'Decoding terminated'
 
     except IOError:
@@ -99,6 +103,8 @@ if __name__ == "__main__":
 
     # Decoding parameters
     parser.add_argument('--model_path', type=str, default=None)
+    parser.add_argument('--src_vocab', type=str, default=None)
+    parser.add_argument('--tgt_vocab', type=str, default=None)
     parser.add_argument('--decode_input', type=str, default=None)
     parser.add_argument('--decode_output', type=str, default=None)
     parser.add_argument('--batch_size', type=int, default=1)
