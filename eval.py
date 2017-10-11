@@ -29,8 +29,7 @@ def load_model(config):
                           checkpoint['num_enc_symbols'], checkpoint['num_dec_symbols'])
         model.load_state_dict(checkpoint['state_dict'])
     else:
-    	raise ValueError(
-    		'No such file:[{}]'.format(config.model_path))
+        raise ValueError('No such file:[{}]'.format(config.model_path))
 
     for key in config.__dict__:
         checkpoint[key] = config.__dict__[key]
@@ -60,9 +59,9 @@ def decode(config):
         for idx, source_seq in enumerate(test_set):
             source, source_len = prepare_batch(source_seq)
 
-            preds_prev = torch.zeros(config['batch_size'], config['max_decode_step']).long()
+            preds_prev = torch.zeros(len(source), config['max_decode_step']).long()
             preds_prev[:,0] += data_utils.start_token
-            preds = torch.zeros(config['batch_size'], config['max_decode_step']).long()
+            preds = torch.zeros(len(source), config['max_decode_step']).long()
 
             if use_cuda:
                 source = Variable(source.cuda())
@@ -78,7 +77,7 @@ def decode(config):
             
             for t in xrange(config['max_decode_step']):
                 # logits: [batch_size x max_decode_step, tgt_vocab_size]
-                _, logits = model.decode(preds_prev, None, memories, keep_len=True)
+                _, logits = model.decode(preds_prev, states, memories, keep_len=True)
                 # outputs: [batch_size, max_decode_step]
                 outputs = torch.max(logits, dim=1)[1].view(config['batch_size'], -1)
                 preds[:,t] = outputs[:,t].data

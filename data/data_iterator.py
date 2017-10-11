@@ -327,7 +327,7 @@ def prepare_train_batch(seqs_x, seqs_y, maxlen=None):
         seqs_y = new_seqs_y
 
         if len(lengths_x) < 1 or len(lengths_y) < 1:
-            return None, None, None, None
+            return None, None, None, None, None
 
     batch_size = len(seqs_x)
     

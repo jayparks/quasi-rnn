@@ -61,7 +61,7 @@ class Decoder(nn.Module):
         # h: [batch_size, emb_size, length]
         h = self.embedding(inputs).transpose(1, 2)
         for layer_idx, layer in enumerate(self.layers):
-            state = init_states[layer_idx] if init_states is not None else None
+            state = None if init_states is None else init_states[layer_idx]
             memory = memories[layer_idx]
 
             c, h = layer(h, state, memory, keep_len)

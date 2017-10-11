@@ -23,8 +23,8 @@ use_cuda = torch.cuda.is_available()
 def create_model(config):
     print 'Creating new model parameters..'
     model = QRNNModel(QRNNLayer, config.num_layers, config.kernel_size,
-    	              config.hidden_size, config.emb_size, 
-    	              config.num_enc_symbols, config.num_dec_symbols)
+                      config.hidden_size, config.emb_size,
+                      config.num_enc_symbols, config.num_dec_symbols)
 
     # Initialize a model state
     model_state = vars(config)
@@ -66,6 +66,8 @@ def train(config):
                                    source_dict=config.src_vocab,
                                    target_dict=config.tgt_vocab,
                                    batch_size=config.batch_size,
+                                   maxlen=None,
+                                   shuffle_each_epoch=False,
                                    n_words_source=config.num_enc_symbols,
                                    n_words_target=config.num_dec_symbols)
     else:
