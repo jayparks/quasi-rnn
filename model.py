@@ -21,7 +21,7 @@ class Encoder(nn.Module):
 
         last_states, hidden_states = [], []
         for layer in self.layers:
-            c, h = layer(h, keep_len=True)  # c, h: [batch_size, hidden_size, length]
+            c, h = layer(h)  # c, h: [batch_size, hidden_size, length]
             
             time = Variable(torch.arange(0, h.size(2)).expand_as(h).long())
             if h.is_cuda:
@@ -53,7 +53,7 @@ class Decoder(nn.Module):
             layers.append(qrnn_layer(input_size, hidden_size, kernel_size, use_attn))
         self.layers = nn.Sequential(*layers)
                                           
-    def forward(self, inputs, init_states, memories, keep_len):
+    def forward(self, inputs, init_states, memories):
 #        assert len(self.layers) == len(init_states)
         assert len(self.layers) == len(memories)
 
@@ -64,11 +64,13 @@ class Decoder(nn.Module):
             state = None if init_states is None else init_states[layer_idx]
             memory = memories[layer_idx]
 
-            c, h = layer(h, state, memory, keep_len)
+            c, h = layer(h, state, memory)
             cell_states.append(c); hidden_states.append(h)
 
         # The shape of the each state: [batch_size, hidden_size, length]
         # return lists of cell states and hidden_states
+        #print 'cell_states', cell_states
+        #print 'hidden_states', hidden_states
         return cell_states, hidden_states
 
 
@@ -86,9 +88,8 @@ class QRNNModel(nn.Module):
     def encode(self, inputs, input_len):
         return self.encoder(inputs, input_len)
 
-    def decode(self, inputs, init_states, memories, keep_len):
-        cell_states, hidden_states = self.decoder(inputs, init_states, 
-                                                  memories, keep_len)
+    def decode(self, inputs, init_states, memories):
+        cell_states, hidden_states = self.decoder(inputs, init_states, memories)
         # return:
         # projected hidden_state of the last layer: logit
         #   first reshape it to [batch_size x length, hidden_size]
@@ -102,6 +103,6 @@ class QRNNModel(nn.Module):
         init_states, memories = self.encode(enc_inputs, enc_len)
         
         # logits: [batch_size x length, tgt_vocab_size]
-        _, logits = self.decode(dec_inputs, init_states, memories, keep_len=True)
+        _, logits = self.decode(dec_inputs, init_states, memories)
 
         return logits

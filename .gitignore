@@ -4,6 +4,7 @@ data/wmt*
 data/newstest*
 data/train.*
 data/test.*
+data/europarl*
 model/
 .ipynb*
 train.sh

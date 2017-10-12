@@ -17,13 +17,13 @@ class QRNNLayer(nn.Module):
         self.conv_linear = nn.Linear(hidden_size, 3*hidden_size)
         self.rnn_linear = nn.Linear(2*hidden_size, hidden_size)
 
-    def _conv_step(self, inputs, keep_len, memory=None):
+    def _conv_step(self, inputs, memory=None):
         # inputs: [batch_size, input_size, length]
         # memory: [batch_size, memory_size]
-        if keep_len:
-            # TODO: FF.pad(inputs, (self.kernel_size-1, 0,))
-            padded = FF.pad(inputs.unsqueeze(2), (self.kernel_size-1, 0, 0, 0))
-            inputs = padded.squeeze(2)
+        
+        # TODO: FF.pad(inputs, (self.kernel_size-1, 0,))
+        padded = FF.pad(inputs.unsqueeze(2), (self.kernel_size-1, 0, 0, 0))
+        inputs = padded.squeeze(2)
         
         gates = self.conv1d(inputs) # gates: [batch_size, 3*hidden_size, length]
         if memory is not None:
@@ -48,14 +48,14 @@ class QRNNLayer(nn.Module):
         # c_, h_: [batch_size, hidden_size, 1]
         return c_, (o * h_)
 
-    def forward(self, inputs, state=None, memory=None, keep_len=True):
+    def forward(self, inputs, state=None, memory=None):
         # inputs: [batch_size, input_size, length]
         # state: [batch_size, hidden_size]
         c = None if state is None else state.unsqueeze(-1) # unsqueeze dim to feed in _rnn_step
         conv_memory, attn_memory =(None, None) if memory is None else memory
 
         # Z, F, O: [batch_size, hidden_size, length]
-        Z, F, O = self._conv_step(inputs, keep_len, conv_memory)
+        Z, F, O = self._conv_step(inputs, conv_memory)
         c_time, h_time = [], []
         for time, (z, f, o) in enumerate(zip(Z.split(1, 2), F.split(1, 2), O.split(1, 2))):
             c, h = self._rnn_step(z, f, o, c, attn_memory)
