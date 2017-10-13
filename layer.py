@@ -18,48 +18,50 @@ class QRNNLayer(nn.Module):
         self.rnn_linear = nn.Linear(2*hidden_size, hidden_size)
 
     def _conv_step(self, inputs, memory=None):
-        # inputs: [batch_size, input_size, length]
-        # memory: [batch_size, memory_size]
+        # inputs: [batch_size x length x hidden_size]
+        # memory: [batch_size x memory_size]
+        
+        # transpose inputs to feed in conv1d: [batch_size x hidden_size x length]
+        inputs_ = inputs.transpose(1, 2)
         
         # TODO: FF.pad(inputs, (self.kernel_size-1, 0,))
-        padded = FF.pad(inputs.unsqueeze(2), (self.kernel_size-1, 0, 0, 0))
-        inputs = padded.squeeze(2)
+        padded = FF.pad(inputs_.unsqueeze(2), (self.kernel_size-1, 0, 0, 0)).squeeze(2)
         
-        gates = self.conv1d(inputs) # gates: [batch_size, 3*hidden_size, length]
+        gates = self.conv1d(padded).transpose(1, 2) # gates: [batch_size x length x 3*hidden_size]
         if memory is not None:
-            gates = gates + self.conv_linear(memory).unsqueeze(-1) # broadcast memory
+            gates = gates + self.conv_linear(memory).unsqueeze(1) # broadcast memory
 
-        # Z, F, O: [batch_size, hidden_size, length]
-        Z, F, O = gates.split(split_size=self.hidden_size, dim=1)
+        # Z, F, O: [batch_size x length x hidden_size]
+        Z, F, O = gates.split(split_size=self.hidden_size, dim=2)
         return Z.tanh(), F.sigmoid(), O.sigmoid()
 
     def _rnn_step(self, z, f, o, c, attn_memory=None):
         # uses 'fo pooling' at each time step
-        # z, f, o, c: [batch_size, hidden_size, 1]
-        # attn_memory: [batch_size, memory_size, length']
+        # z, f, o, c: [batch_size x 1 x hidden_size]
+        # attn_memory: [batch_size x length' x memory_size]
         c_ = (1 - f) * z if c is None else f * c + (1 - f) * z
         if not self.use_attn: 
             return c_, (o * c_)	# return c_t and h_t
 
-        alpha = FF.softmax(torch.bmm(c_.transpose(1, 2), attn_memory).squeeze(1))	# alpha: [batch_size, length']
-        context = torch.sum(alpha.unsqueeze(1) * attn_memory, dim=2)			# context: [batch_size, memory_size]
-        h_ = self.rnn_linear(torch.cat([c_.squeeze(-1), context], dim=1)).unsqueeze(-1)
+        alpha = FF.softmax(torch.bmm(c_, attn_memory.transpose(1, 2)).squeeze(1))	# alpha: [batch_size x length']
+        context = torch.sum(alpha.unsqueeze(-1) * attn_memory, dim=1)			# context: [batch_size x memory_size]
+        h_ = self.rnn_linear(torch.cat([c_.squeeze(1), context], dim=1)).unsqueeze(1)
         
-        # c_, h_: [batch_size, hidden_size, 1]
+        # c_, h_: [batch_size x 1 x hidden_size]
         return c_, (o * h_)
 
     def forward(self, inputs, state=None, memory=None):
-        # inputs: [batch_size, input_size, length]
-        # state: [batch_size, hidden_size]
-        c = None if state is None else state.unsqueeze(-1) # unsqueeze dim to feed in _rnn_step
-        conv_memory, attn_memory =(None, None) if memory is None else memory
+        # inputs: [batch_size x input_size x length]
+        # state: [batch_size x hidden_size]
+        c = None if state is None else state.unsqueeze(1) # unsqueeze dim to feed in _rnn_step
+        (conv_memory, attn_memory) =(None, None) if memory is None else memory
 
-        # Z, F, O: [batch_size, hidden_size, length]
+        # Z, F, O: [batch_size x length x hidden_size]
         Z, F, O = self._conv_step(inputs, conv_memory)
         c_time, h_time = [], []
-        for time, (z, f, o) in enumerate(zip(Z.split(1, 2), F.split(1, 2), O.split(1, 2))):
+        for time, (z, f, o) in enumerate(zip(Z.split(1, 1), F.split(1, 1), O.split(1, 1))):
             c, h = self._rnn_step(z, f, o, c, attn_memory)
             c_time.append(c); h_time.append(h)
         
-        # return concatenated cell & hidden states: [batch_size, hidden_size, length]
-        return torch.cat(c_time, dim=2), torch.cat(h_time, dim=2)
+        # return concatenated cell & hidden states: [batch_size x length x hidden_size]
+        return torch.cat(c_time, dim=1), torch.cat(h_time, dim=1)

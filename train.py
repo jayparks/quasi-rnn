@@ -14,9 +14,9 @@ from layer import QRNNLayer
 from model import QRNNModel
 
 import data.data_utils as data_utils
+from data.data_utils import prepare_batch
+from data.data_utils import prepare_train_batch
 from data.data_iterator import BiTextIterator
-from data.data_iterator import prepare_batch
-from data.data_iterator import prepare_train_batch
 
 use_cuda = torch.cuda.is_available()
 
@@ -67,9 +67,11 @@ def train(config):
                                    target_dict=config.tgt_vocab,
                                    batch_size=config.batch_size,
                                    maxlen=None,
-                                   shuffle_each_epoch=False,
                                    n_words_source=config.num_enc_symbols,
-                                   n_words_target=config.num_dec_symbols)
+                                   n_words_target=config.num_dec_symbols,
+                                   shuffle_each_epoch=False,
+                                   sort_by_length=config.sort_by_len,
+                                   maxibatch_size=config.maxi_batches)
     else:
         valid_set = None
 

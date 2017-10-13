@@ -1,10 +1,5 @@
 import torch
-
-import sys
-import json
-import cPickle as pkl
 import numpy as np
-import gzip
 
 # Extra vocabulary symbols
 _GO = '_GO_'
@@ -20,46 +15,6 @@ unk_token = extra_tokens.index(UNK)     # unk_token = 2
 pad_token = extra_tokens.index(PAD)     # pad_token = 3
 
 
-def unicode_to_utf8(d):
-    return dict((key.encode("UTF-8"), value) for (key,value) in d.items())
-
-
-def fopen(filename, mode='r'):
-    if filename.endswith('.gz'):
-        return gzip.open(filename, mode)
-    return open(filename, mode)
-
-
-def load_config(basename):
-    try:
-        with open('%s.json' % basename, 'rb') as f:
-            return json.load(f)
-    except:
-        try:
-            with open('%s.pkl' % basename, 'rb') as f:
-                return pkl.load(f)
-        except:
-            sys.stderr.write('Error: config file {0}.json is missing\n'.format(basename))
-            sys.exit(1)
-
-
-def load_dict(filename):
-    try:
-        with open(filename, 'rb') as f:
-            return unicode_to_utf8(json.load(f))
-    except:
-        with open(filename, 'rb') as f:
-            return pkl.load(f)
-
-
-def load_inv_dict(dict_path):
-    orig_dict = load_dict(dict_path)
-    idict = {}
-    for words, idx in orig_dict.iteritems():
-        idict[idx] = words
-    return idict
-
-
 def seq2words(seq, inv_target_dict):
     words = []
     for w in seq:
@@ -71,3 +26,84 @@ def seq2words(seq, inv_target_dict):
             words.append(UNK)
     return ' '.join(words)
 
+
+# batch preparation of a given sequence
+def prepare_batch(seqs_x, maxlen=None):
+    # seqs_x: a list of sentences
+    lengths_x = [len(s) for s in seqs_x]
+
+    if maxlen is not None:
+        new_seqs_x = []
+        new_lengths_x = []
+        for l_x, s_x in zip(lengths_x, seqs_x):
+            if maxlen is None or l_x <= maxlen:
+                new_seqs_x.append(s_x)
+                new_lengths_x.append(l_x)
+        lengths_x = new_lengths_x
+        seqs_x = new_seqs_x
+
+        if len(lengths_x) < 1:
+            return None, None
+
+    batch_size = len(seqs_x)
+    
+    x_lengths = torch.LongTensor(lengths_x)
+    maxlen_x = torch.max(x_lengths)
+
+    x = torch.ones(batch_size, maxlen_x).long() * pad_token
+    
+    for idx, s_x in enumerate(seqs_x):
+        x[idx, :lengths_x[idx]] = torch.LongTensor(s_x)
+    return x, x_lengths
+
+
+# batch preparation of a given sequence pair for training
+def prepare_train_batch(seqs_x, seqs_y, maxlen=None):
+    # seqs_x, seqs_y: a list of sentences
+    lengths_x = [len(s) for s in seqs_x]
+    lengths_y = [len(s) for s in seqs_y]
+
+    if maxlen is not None:
+        new_seqs_x = []
+        new_seqs_y = []
+        new_lengths_x = []
+        new_lengths_y = []
+        for l_x, s_x, l_y, s_y in zip(lengths_x, seqs_x, lengths_y, seqs_y):
+            if l_x <= maxlen and l_y <= maxlen:
+                new_seqs_x.append(s_x)
+                new_lengths_x.append(l_x)
+                new_seqs_y.append(s_y)
+                new_lengths_y.append(l_y)
+        lengths_x = new_lengths_x
+        seqs_x = new_seqs_x
+        lengths_y = new_lengths_y
+        seqs_y = new_seqs_y
+
+        if len(lengths_x) < 1 or len(lengths_y) < 1:
+            return None, None, None, None, None
+
+    batch_size = len(seqs_x)
+    
+    x_lengths = torch.LongTensor(lengths_x)
+    y_lengths = torch.LongTensor(lengths_y)
+
+    maxlen_x = torch.max(x_lengths)
+    maxlen_y = torch.max(y_lengths)
+    
+    x = torch.ones(batch_size, maxlen_x).long() * pad_token
+    # length + 1 for _GO or EOS token 
+    y_input = torch.ones(batch_size, maxlen_y+1).long() * pad_token
+    y_target = torch.ones(batch_size, maxlen_y+1).long() * pad_token
+   
+    for idx, [s_x, s_y] in enumerate(zip(seqs_x, seqs_y)):
+        x[idx, :lengths_x[idx]] = torch.LongTensor(s_x)
+
+        # insert _GO token at the beginning of a sequence
+        y_input[idx, 0] = start_token
+        y_input[idx, 1:lengths_y[idx]+1] = torch.LongTensor(s_y)
+
+        # insert EOS token at the end of a sequence
+        y_target[idx, :lengths_y[idx]] = torch.LongTensor(s_y)
+        y_target[idx, lengths_y[idx]] = end_token
+
+    return x, x_lengths, y_input, y_target, y_lengths
