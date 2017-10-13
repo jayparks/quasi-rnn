@@ -101,7 +101,11 @@ def train(config):
             # Get a batch from training parallel data
             enc_input, enc_len, dec_input, dec_target, dec_len = \
                 prepare_train_batch(source_seq, target_seq, config.max_seq_len)
-            
+ 
+            if enc_input is None or dec_input is None or dec_target is None:
+                print 'No samples under max_seq_length ', config.max_seq_len
+                continue
+           
             if use_cuda:
                 enc_input = Variable(enc_input.cuda())
                 enc_len = Variable(enc_len.cuda())
@@ -114,10 +118,6 @@ def train(config):
                 dec_input = Variable(dec_input)
                 dec_target = Variable(dec_target)
                 dec_len = Variable(dec_len)
-
-            if enc_input is None or dec_input is None or dec_target is None:
-                print 'No samples under max_seq_length ', config.max_seq_len
-                continue
 
             # Execute a single training step
             optimizer.zero_grad()
@@ -160,7 +160,7 @@ def train(config):
                 valid_sents_seen = 0
                 for source_seq, target_seq in valid_set:
                     # Get a batch from validation parallel data
-                    enc_input, enc_len, dec_input, dec_target, dec_len = \
+                    enc_input, enc_len, dec_input, dec_target, _ = \
                         prepare_train_batch(source_seq, target_seq)
 
                     if use_cuda:
@@ -168,13 +168,11 @@ def train(config):
                         enc_len = Variable(enc_len.cuda())
                         dec_input = Variable(dec_input.cuda())
                         dec_target = Variable(dec_target.cuda())
-                        dec_len = Variable(dec_len.cuda())
                     else:
                         enc_input = Variable(enc_input)
                         enc_len = Variable(enc_len)
                         dec_input = Variable(dec_input)
                         dec_target = Variable(dec_target)
-                        dec_len = Variable(dec_len)
 
                     dec_logits = model(enc_input, enc_len, dec_input)
                     step_loss = criterion(dec_logits, dec_target.view(-1))
