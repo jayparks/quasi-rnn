@@ -37,6 +37,6 @@ For simplicity, we used greedy decoding at each time step, not the beam search d
 
 # **Notes**
 
-For more in-depth demonstration, Quasi-rnn API for Pytorch is now available: https://github.com/salesforce/pytorch-qrnn
+For more in-depth demonstration, QRNN API for Pytorch is available: https://github.com/salesforce/pytorch-qrnn
 
 For any comments and feedbacks, please email me at pjh0308@gmail.com or open an issue here.
