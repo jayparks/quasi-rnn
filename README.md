@@ -26,11 +26,11 @@ $ python train.py --kernel_size 3 \
 ## **Decoding**
 To run the trained model for translation,
 ```ruby
-$ python decode.py  --model_path $path_to_model \
-                    --decode_input $path_to_source \
-                    --decode_output $path_to_output
-                    --max_decode_step 300 \
-                    --batch_size 30 ...                  
+$ python eval.py  --model_path $path_to_model \
+                  --decode_input $path_to_source \
+                  --decode_output $path_to_output
+                  --max_decode_step 300 \
+                  --batch_size 30 ...                  
 ```
 For simplicity, we used greedy decoding at each time step, not the beam search decoding.
 
