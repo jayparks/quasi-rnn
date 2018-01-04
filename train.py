@@ -20,7 +20,8 @@ from data.data_iterator import BiTextIterator
 
 use_cuda = torch.cuda.is_available()
 
-def create_model(config):
+
+def create_model(config):  # TODO: not to use config.num_symbols, but actual dict size
     print 'Creating new model parameters..'
     model = QRNNModel(QRNNLayer, config.num_layers, config.kernel_size,
                       config.hidden_size, config.emb_size,
