@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as FF
-from torch.autograd import Variable
+
 
 class QRNNLayer(nn.Module):
     def __init__(self, input_size, hidden_size, kernel_size, use_attn=False):
@@ -23,10 +23,7 @@ class QRNNLayer(nn.Module):
         
         # transpose inputs to feed in conv1d: [batch_size x hidden_size x length]
         inputs_ = inputs.transpose(1, 2)
-        
-        # TODO: FF.pad(inputs, (self.kernel_size-1, 0,))
-        padded = FF.pad(inputs_.unsqueeze(2), (self.kernel_size-1, 0, 0, 0)).squeeze(2)
-        
+        padded = FF.pad(inputs_, (self.kernel_size-1, 0))
         gates = self.conv1d(padded).transpose(1, 2) # gates: [batch_size x length x 3*hidden_size]
         if memory is not None:
             gates = gates + self.conv_linear(memory).unsqueeze(1) # broadcast memory
@@ -43,8 +40,8 @@ class QRNNLayer(nn.Module):
         if not self.use_attn: 
             return c_, (o * c_)	# return c_t and h_t
 
-        alpha = FF.softmax(torch.bmm(c_, attn_memory.transpose(1, 2)).squeeze(1))	# alpha: [batch_size x length']
-        context = torch.sum(alpha.unsqueeze(-1) * attn_memory, dim=1)			# context: [batch_size x memory_size]
+        alpha = FF.softmax(torch.bmm(c_, attn_memory.transpose(1, 2)).squeeze(1))   # alpha: [batch_size x length']
+        context = torch.sum(alpha.unsqueeze(-1) * attn_memory, dim=1)			    # context: [batch_size x memory_size]
         h_ = self.rnn_linear(torch.cat([c_.squeeze(1), context], dim=1)).unsqueeze(1)
         
         # c_, h_: [batch_size x 1 x hidden_size]

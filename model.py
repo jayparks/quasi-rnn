@@ -13,7 +13,7 @@ class Encoder(nn.Module):
         for layer_idx in xrange(n_layers):
             input_size = emb_size if layer_idx == 0 else hidden_size
             layers.append(qrnn_layer(input_size, hidden_size, kernel_size, False))
-        self.layers = nn.Sequential(*layers)
+        self.layers = nn.ModuleList(layers)
                                           
     def forward(self, inputs, input_len):
         # input_len: [batch_size] Variable(torch.LongTensor)
@@ -26,10 +26,9 @@ class Encoder(nn.Module):
             time = Variable(torch.arange(0, h.size(1)).unsqueeze(-1).expand_as(h).long())
             if h.is_cuda:
                 time = time.cuda()
-            # mask to support variable seq lengths
+            # mask to support variable seq lengths: TODO: use .masked_fill()
             mask = (input_len.unsqueeze(-1).unsqueeze(-1) > time).float()
             h = h * mask
-
             # c_last, h_last: [batch_size, hidden_size]           
             c_last = c[range(len(inputs)), (input_len-1).data,:]
             h_last = h[range(len(inputs)), (input_len-1).data,:]
@@ -51,7 +50,7 @@ class Decoder(nn.Module):
             input_size = emb_size if layer_idx == 0 else hidden_size
             use_attn = True if layer_idx == n_layers-1 else False
             layers.append(qrnn_layer(input_size, hidden_size, kernel_size, use_attn))
-        self.layers = nn.Sequential(*layers)
+        self.layers = nn.ModuleList(layers)
                                           
     def forward(self, inputs, init_states, memories):
         assert len(self.layers) == len(memories)
@@ -93,12 +92,11 @@ class QRNNModel(nn.Module):
         #   after projection: [batch_size * length x tgt_vocab_size]
         h_last = hidden_states[-1]
 
-        return cell_states, self.proj_linear(h_last.view(-1, h_last.size(2)))
+        return cell_states, self.proj_linear(h_last.view(-1, h_last.size(-1)))
 
     def forward(self, enc_inputs, enc_len, dec_inputs):
         # Encode source inputs
         init_states, memories = self.encode(enc_inputs, enc_len)
-        
         # logits: [batch_size * length x tgt_vocab_size]
         _, logits = self.decode(dec_inputs, init_states, memories)
 

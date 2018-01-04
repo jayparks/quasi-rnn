@@ -39,47 +39,34 @@ def create_model(config):
         model_state['epoch'] = checkpoint['epoch']
         model_state['train_steps'] = checkpoint['train_steps']
         model.load_state_dict(checkpoint['state_dict'])
+    if use_cuda:
+        print 'Using gpu..'
+        model = model.cuda()
 
+    model.train()
     return model, model_state
 
 
 def train(config):
     # Load parallel data to train
-    # TODO: using PyTorch DataIterator
     print 'Loading training data..'
-    train_set = BiTextIterator(source=config.src_train,
-                               target=config.tgt_train,
-                               source_dict=config.src_vocab,
-                               target_dict=config.tgt_vocab,
-                               batch_size=config.batch_size,
-                               maxlen=config.max_seq_len,
-                               n_words_source=config.num_enc_symbols,
-                               n_words_target=config.num_dec_symbols,
-                               shuffle_each_epoch=config.shuffle,
-                               sort_by_length=config.sort_by_len,
+    train_set = BiTextIterator(source=config.src_train, target=config.tgt_train,
+                               source_dict=config.src_vocab, target_dict=config.tgt_vocab,
+                               batch_size=config.batch_size, maxlen=config.max_seq_len,
+                               n_words_source=config.num_enc_symbols, n_words_target=config.num_dec_symbols,
+                               shuffle_each_epoch=config.shuffle, sort_by_length=config.sort_by_len,
                                maxibatch_size=config.maxi_batches)
-
+    valid_set = None
     if config.src_valid and config.tgt_valid:
         print 'Loading validation data..'
-        valid_set = BiTextIterator(source=config.src_valid,
-                                   target=config.tgt_valid,
-                                   source_dict=config.src_vocab,
-                                   target_dict=config.tgt_vocab,
-                                   batch_size=config.batch_size,
-                                   maxlen=None,
-                                   n_words_source=config.num_enc_symbols,
-                                   n_words_target=config.num_dec_symbols,
-                                   shuffle_each_epoch=False,
-                                   sort_by_length=config.sort_by_len,
+        valid_set = BiTextIterator(source=config.src_valid, target=config.tgt_valid,
+                                   source_dict=config.src_vocab, target_dict=config.tgt_vocab,
+                                   batch_size=config.batch_size, maxlen=None,
+                                   n_words_source=config.num_enc_symbols, n_words_target=config.num_dec_symbols,
+                                   shuffle_each_epoch=False, sort_by_length=config.sort_by_len,
                                    maxibatch_size=config.maxi_batches)
-    else:
-        valid_set = None
-
     # Create a Quasi-RNN model
     model, model_state = create_model(config)
-    if use_cuda:
-        print 'Using gpu..'
-        model = model.cuda()
 
     # Loss and Optimizer
     criterion = nn.CrossEntropyLoss(ignore_index=data_utils.pad_token)
@@ -88,7 +75,6 @@ def train(config):
     loss = 0.0
     words_seen, sents_seen = 0, 0
     start_time = time.time()
-
     # Training loop
     print 'Training..'
     for epoch_idx in xrange(config.max_epochs):
@@ -96,7 +82,6 @@ def train(config):
             print 'Training is already complete.', \
                   'current epoch:{}, max epoch:{}'.format(model_state['epoch'], config.max_epochs)
             break
-
         for source_seq, target_seq in train_set:    
             # Get a batch from training parallel data
             enc_input, enc_len, dec_input, dec_target, dec_len = \
@@ -135,7 +120,6 @@ def train(config):
 
             # Display training status
             if model_state['train_steps'] % config.display_freq == 0:
-
                 avg_perplexity = math.exp(float(loss)) if loss < 300 else float("inf")
                 time_elapsed = time.time() - start_time
                 step_time = time_elapsed / config.display_freq
@@ -153,8 +137,8 @@ def train(config):
 
             # Execute a validation process
             if valid_set and model_state['train_steps'] % config.valid_freq == 0:
+                model.eval()
                 print 'Validation step'
-                
                 valid_steps = 0
                 valid_loss = 0.0
                 valid_sents_seen = 0
@@ -181,6 +165,7 @@ def train(config):
                     valid_sents_seen += enc_input.size(0)
                     print '  {} samples seen'.format(valid_sents_seen)
 
+                model.train()
                 print 'Valid perplexity: {0:.2f}'.format(math.exp(valid_loss / valid_steps))
 
             # Save the model checkpoint
